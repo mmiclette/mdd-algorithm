@@ -200,6 +200,16 @@ hr {{
 [data-testid="stToggle"] span {{
     color: {NF['text_pri']} !important;
 }}
+
+/* ── Toggle track visibility (inactive state) ── */
+[data-testid="stToggle"] > label > div[data-testid="stMarkdownContainer"] {{
+    color: #212121 !important;
+}}
+[role="switch"] {{
+    background-color: #BDBDBD !important;
+    border: 2px solid #757575 !important;
+    min-width: 40px !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
