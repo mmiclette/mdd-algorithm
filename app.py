@@ -891,6 +891,38 @@ with col_right:
             unsafe_allow_html=True,
         )
 
+    # ── Maintenance plan ─────────────────────────────────────────────────────
+    maint_plan = report.get("maintenance_plan", [])
+    if maint_plan:
+        maint_html = "".join(
+            f'<div style="margin-bottom:0.4rem;">{_e(mp)}</div>'
+            for mp in maint_plan
+        )
+        st.markdown(
+            _block(
+                "Maintenance Plan",
+                maint_html,
+                NF["teal"],
+            ),
+            unsafe_allow_html=True,
+        )
+
+    # ── Relapse prevention ────────────────────────────────────────────────────
+    relapse_prev = report.get("relapse_prevention", [])
+    if relapse_prev:
+        rp_html = "".join(
+            f'<div style="margin-bottom:0.3rem;">{_e(rp)}</div>'
+            for rp in relapse_prev
+        )
+        st.markdown(
+            _block(
+                "Relapse Prevention",
+                rp_html,
+                NF["blue"],
+            ),
+            unsafe_allow_html=True,
+        )
+
     # ── Next check-in ──────────────────────────────────────────────────────────
     next_ci = report.get("next_check_in", "")
     if next_ci:

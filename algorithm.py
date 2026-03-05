@@ -582,6 +582,7 @@ class AlgorithmOutput(BaseModel):
     adjunctive_options: List[str] = Field(default_factory=list)
     reference_list: List[str] = Field(default_factory=list)
     switching_protocol: List[str] = Field(default_factory=list)
+    response_category: Optional[str] = None               # set during follow-up routing: "remission_or_response", "partial", "no_response"
     report: Optional[Any] = Field(default=None)          # structured JSON dict for React
     text_report: Optional[str] = Field(default=None)     # formatted text for notebook display
 
@@ -1600,31 +1601,30 @@ def build_augmentation_recs(
     state: "WorkingState",
 ) -> List[MedicationRecommendation]:
     """
-    Four-tier augmentation hierarchy per Steps 6, 6a, 6b of CLAUDE_MDD.md.
+    Two-tier augmentation hierarchy per CLAUDE_MDD.md.
 
-    Tier 1 — Co-equal first choices: aripiprazole [43, 45, 46] +
-               bupropion (if on SSRI/SNRI) [45, 46].
-               Exception: chronic suicidality → lithium elevated to Tier 1 [47, 48, 54].
-               NOTE: mirtazapine removed from Tier 1 — no clinically meaningful benefit [43, 51].
-    Tier 2 — Second-choice SGAs after Tier 1 failure: quetiapine, brexpiprazole,
-               cariprazine, lurasidone [24, 43, 44, 49, 50, 51].
-    Tier 3 — Targeted: lithium (TRD/after SGAs) [47, 48, 49, 50, 54],
-               methylphenidate (residual anergia) [56, 57, 58],
-               lisdexamfetamine (off-label) [43, 59].
+    First Choice (choose one):
+      - Aripiprazole 2–5 mg, max 15 mg
+      - Lurasidone 20 mg, max 60 mg
+      - Alternate-class antidepressant:
+          If on SSRI/SNRI → add bupropion or mirtazapine
+          If on bupropion/mirtazapine → add SSRI or SNRI
+
+    Second Choice:
+      - Quetiapine 150–300 mg/day
+      - Brexpiprazole
+      - Risperidone 0.5 mg, max 6 mg
+      - Olanzapine 5–10 mg, max 20 mg
+      - Lithium — only if chronic suicidality present
+      For prominent residual anergia:
+      - Methylphenidate
     """
     out = state.output
     recs: List[MedicationRecommendation] = []
     cls = current_med_class(current_med)
     is_chronic_suicidal = getattr(p, "chronic_suicidality", False)
 
-    # ── Mirtazapine note ─────────────────────────────────────────────────────────────────
-    out.rationale.append(
-        "NOTE: mirtazapine is NOT a first-choice augmentation option. High-quality evidence "
-        "shows no clinically meaningful benefit (MD on BDI-II −1.7, 95% CI −4.03 to 0.63) "
-        "and significantly higher discontinuation rates than placebo [43, 51]."
-    )
-
-    # ── Dementia warning (applies to all SGAs) ───────────────────────────────────────────────────────
+    # ── Dementia warning (applies to all SGAs) ────────────────────────────────
     if p.dementia:
         out.warnings.append(
             "FDA black box warning: all atypical antipsychotics carry increased mortality "
@@ -1632,124 +1632,180 @@ def build_augmentation_recs(
             "assessment [26, 28]."
         )
 
-    # ── Tier 1: Co-equal first choices ─────────────────────────────────────────────────────────────────
+    # ── First Choice ──────────────────────────────────────────────────────────
 
-    # Exception: chronic suicidality → lithium first
-    if is_chronic_suicidal and can_rec("lithium"):
-        recs.append(_make_reco(
-            p, "lithium", intent="augment_with", active_paths=pathways,
-            rationale=[
-                "FIRST CHOICE augmentation (chronic suicidality) — lithium: unique anti-suicide "
-                "properties; elevated to Tier 1 when chronic suicidality present [54, 47, 48]."
-            ],
-            additional_messages=[
-                "Target: 0.6–1.2 mEq/L general; 0.3–0.6 mmol/L older adults [54, 54].",
-                "Monitor: Li+ level, TSH, BMP at initiation, 1–2 months, then every 6–12 months.",
-            ],
-            evidence=[EvidenceItem(
-                variable="Augmentation tier",
-                value="1 — lithium (chronic suicidality exception)",
-                fhir_source="Derived",
-            )],
-        ))
-
-    # Aripiprazole — Tier 1 for all patients
+    # Aripiprazole
     if can_rec("aripiprazole"):
         recs.append(_make_reco(
             p, "aripiprazole", intent="augment_with", active_paths=pathways,
             rationale=[
-                "FIRST CHOICE augmentation — aripiprazole: NNT=8 for response. "
+                "FIRST CHOICE augmentation — aripiprazole 2–5 mg, max 15 mg: NNT=8 for response. "
                 "OPTIMUM trial: 28.9% remission vs 19.3% for switching [46, 45, 43]."
             ],
             evidence=[EvidenceItem(
                 variable="Augmentation tier",
-                value="1 — aripiprazole",
+                value="First choice — aripiprazole",
                 fhir_source="Derived",
             )],
         ))
 
-    # Bupropion — Tier 1 only if on SSRI or SNRI
-    if cls in {"ssri", "snri"} and can_rec("bupropion_xl"):
+    # Lurasidone
+    if can_rec("lurasidone"):
         recs.append(_make_reco(
-            p, "bupropion_xl", intent="augment_with", active_paths=pathways,
+            p, "lurasidone", intent="augment_with", active_paths=pathways,
             rationale=[
-                "FIRST CHOICE augmentation — add bupropion (patient on "
-                f"{'SSRI' if cls == 'ssri' else 'SNRI'}): comparable remission to aripiprazole "
-                "(28.2% vs 28.9% in OPTIMUM trial); complementary dopamine-norepinephrine "
-                "reuptake inhibition [45, 46]."
+                "FIRST CHOICE augmentation — lurasidone 20 mg, max 60 mg [43]."
             ],
             evidence=[EvidenceItem(
                 variable="Augmentation tier",
-                value="1 — bupropion (SSRI/SNRI combination)",
+                value="First choice — lurasidone",
                 fhir_source="Derived",
             )],
         ))
 
-    # ── Tier 2: Second-choice SGAs ───────────────────────────────────────────────────────────────────
-    tier2 = [
-        ("quetiapine",    "SMD −0.32 efficacy; higher discontinuation (RR 1.57); "
-                          "2025 LQD trial: superior to lithium at 52 weeks [51, 49, 50]."),
-        ("brexpiprazole", "FDA-approved for MDD augmentation; OR 1.47–2.17 for response [24, 43, 44]."),
-        ("cariprazine",   "FDA-approved for MDD augmentation; OR 1.34 for response [24, 43, 44]."),
-        ("lurasidone",    "Limited evidence in unipolar depression; most data in bipolar — "
-                          "use cautiously [43]."),
-    ]
-    for m, note in tier2:
-        if can_rec(m):
+    # Alternate-class antidepressant
+    if cls in {"ssri", "snri"}:
+        # Add bupropion
+        if can_rec("bupropion_xl"):
             recs.append(_make_reco(
-                p, m, intent="augment_with", active_paths=pathways,
-                rationale=[f"SECOND CHOICE augmentation (after Tier 1 failure) — {note}"],
+                p, "bupropion_xl", intent="augment_with", active_paths=pathways,
+                rationale=[
+                    "FIRST CHOICE augmentation — add bupropion (patient on "
+                    f"{'SSRI' if cls == 'ssri' else 'SNRI'}): comparable remission to aripiprazole "
+                    "(28.2% vs 28.9% in OPTIMUM trial); complementary dopamine-norepinephrine "
+                    "reuptake inhibition [45, 46]."
+                ],
                 evidence=[EvidenceItem(
                     variable="Augmentation tier",
-                    value="2 — atypical antipsychotic",
+                    value="First choice — alternate-class AD (bupropion)",
                     fhir_source="Derived",
                 )],
             ))
+        # Add mirtazapine
+        if can_rec("mirtazapine"):
+            recs.append(_make_reco(
+                p, "mirtazapine", intent="augment_with", active_paths=pathways,
+                rationale=[
+                    "FIRST CHOICE augmentation — add mirtazapine (patient on "
+                    f"{'SSRI' if cls == 'ssri' else 'SNRI'}): alternate-class antidepressant "
+                    "augmentation [45, 46]."
+                ],
+                evidence=[EvidenceItem(
+                    variable="Augmentation tier",
+                    value="First choice — alternate-class AD (mirtazapine)",
+                    fhir_source="Derived",
+                )],
+            ))
+    elif cls in {"bupropion", "mirtazapine"}:
+        # Add SSRI or SNRI
+        _alt_ad_options = ["sertraline", "escitalopram", "venlafaxine_xr", "duloxetine"]
+        for _alt_m in _alt_ad_options:
+            if can_rec(_alt_m):
+                _alt_cls = MED_KB[_alt_m]["class"]
+                recs.append(_make_reco(
+                    p, _alt_m, intent="augment_with", active_paths=pathways,
+                    rationale=[
+                        f"FIRST CHOICE augmentation — add {_alt_cls} (patient on "
+                        f"{cls}): alternate-class antidepressant augmentation [45, 46]."
+                    ],
+                    evidence=[EvidenceItem(
+                        variable="Augmentation tier",
+                        value=f"First choice — alternate-class AD ({_alt_cls})",
+                        fhir_source="Derived",
+                    )],
+                ))
+                break  # one alternate-class AD is sufficient
 
-    # ── Tier 3: Targeted options ─────────────────────────────────────────────────────────────────────────
-    if not is_chronic_suicidal and can_rec("lithium"):
+    # ── Second Choice ─────────────────────────────────────────────────────────
+
+    # Quetiapine
+    if can_rec("quetiapine"):
+        recs.append(_make_reco(
+            p, "quetiapine", intent="augment_with", active_paths=pathways,
+            rationale=[
+                "SECOND CHOICE augmentation — quetiapine 150–300 mg/day: SMD −0.32 efficacy; "
+                "2025 LQD trial: superior to lithium at 52 weeks [51, 49, 50]."
+            ],
+            evidence=[EvidenceItem(
+                variable="Augmentation tier",
+                value="Second choice — quetiapine",
+                fhir_source="Derived",
+            )],
+        ))
+
+    # Brexpiprazole
+    if can_rec("brexpiprazole"):
+        recs.append(_make_reco(
+            p, "brexpiprazole", intent="augment_with", active_paths=pathways,
+            rationale=[
+                "SECOND CHOICE augmentation — brexpiprazole: FDA-approved for MDD "
+                "augmentation; OR 1.47–2.17 for response [24, 43, 44]."
+            ],
+            evidence=[EvidenceItem(
+                variable="Augmentation tier",
+                value="Second choice — brexpiprazole",
+                fhir_source="Derived",
+            )],
+        ))
+
+    # Risperidone
+    if can_rec("risperidone"):
+        recs.append(_make_reco(
+            p, "risperidone", intent="augment_with", active_paths=pathways,
+            rationale=[
+                "SECOND CHOICE augmentation — risperidone 0.5 mg, max 6 mg [44]."
+            ],
+            evidence=[EvidenceItem(
+                variable="Augmentation tier",
+                value="Second choice — risperidone",
+                fhir_source="Derived",
+            )],
+        ))
+
+    # Olanzapine
+    if can_rec("olanzapine"):
+        recs.append(_make_reco(
+            p, "olanzapine", intent="augment_with", active_paths=pathways,
+            rationale=[
+                "SECOND CHOICE augmentation — olanzapine 5–10 mg, max 20 mg [44]."
+            ],
+            evidence=[EvidenceItem(
+                variable="Augmentation tier",
+                value="Second choice — olanzapine",
+                fhir_source="Derived",
+            )],
+        ))
+
+    # Lithium — only if chronic suicidality present
+    if is_chronic_suicidal and can_rec("lithium"):
         recs.append(_make_reco(
             p, "lithium", intent="augment_with", active_paths=pathways,
             rationale=[
-                "THIRD CHOICE augmentation — lithium: reserve for TRD or after SGAs fail. "
-                "STAR*D: only 15.9% remission; 2025 LQD trial found quetiapine superior "
-                "[49, 50, 54, 47, 48]."
+                "SECOND CHOICE augmentation — lithium: unique anti-suicide properties; "
+                "indicated when chronic suicidality present [54, 47, 48]."
             ],
             additional_messages=[
-                "Target: 0.6–1.2 mEq/L general; 0.3–0.6 mmol/L older adults [54, 54].",
+                "Target: 0.6–1.2 mEq/L general; 0.3–0.6 mmol/L older adults [54].",
                 "Monitor: Li+ level, TSH, BMP at initiation, 1–2 months, then every 6–12 months.",
             ],
             evidence=[EvidenceItem(
                 variable="Augmentation tier",
-                value="3 — lithium (TRD / after SGAs fail)",
+                value="Second choice — lithium (chronic suicidality)",
                 fhir_source="Derived",
             )],
         ))
 
+    # Methylphenidate — for prominent residual anergia
     if can_rec("methylphenidate"):
         recs.append(_make_reco(
             p, "methylphenidate", intent="augment_with", active_paths=pathways,
             rationale=[
-                "THIRD CHOICE augmentation — methylphenidate: residual anergia or fatigue "
-                "only; low-to-very-low evidence quality; not for broad augmentation [56, 57, 58]."
+                "SECOND CHOICE augmentation (prominent residual anergia) — methylphenidate: "
+                "low-to-very-low evidence quality; use only for residual anergia/fatigue [56, 57, 58]."
             ],
             evidence=[EvidenceItem(
                 variable="Augmentation tier",
-                value="3 — stimulant (residual anergia only)",
-                fhir_source="Derived",
-            )],
-        ))
-
-    if can_rec("lisdexamfetamine"):
-        recs.append(_make_reco(
-            p, "lisdexamfetamine", intent="augment_with", active_paths=pathways,
-            rationale=[
-                "THIRD CHOICE augmentation — lisdexamfetamine: one positive RCT; "
-                "FDA-approved for binge eating disorder only — off-label for MDD [43, 59]."
-            ],
-            evidence=[EvidenceItem(
-                variable="Augmentation tier",
-                value="3 — lisdexamfetamine (off-label for MDD)",
+                value="Second choice — methylphenidate (residual anergia)",
                 fhir_source="Derived",
             )],
         ))
@@ -1770,6 +1826,8 @@ class TreatmentSelectionStage(Stage):
         pathways: List[str] = out.pathway_applied   # now a list
         resp_cat = categorize_response(p.baseline_phq, p.phq_current, p.weeks_on_current_antidepressant)
         out.audit_trail.append(f"response_category={resp_cat}")
+        if resp_cat in {"remission_or_response", "partial", "no_response"}:
+            out.response_category = resp_cat
         trial_n = estimate_trial_number(p)
         out.audit_trail.append(f"trial_number={trial_n}")
 
@@ -1878,113 +1936,103 @@ class TreatmentSelectionStage(Stage):
 
             if resp_cat == "partial":
                 cap = max_cap_for_context(p, current_med, pathways)
-                if not is_at_max_dose_for_context(p, current_med, pathways):
-                    inc_msg = "Partial response: increase dose as tolerated; reassess in ~4–6 weeks."
-                    if p.current_dose_mg is not None:
-                        inc_msg = (
-                            f"Partial response: "
-                            f"{next_dose_step(current_med, float(p.current_dose_mg), cap_override=cap)} "
-                            f"Reassess in ~4–6 weeks."
-                        )
-                    out.recommendations = [_make_reco(
-                        p, current_med, intent="increase", active_paths=pathways,
-                        additional_messages=[inc_msg],
-                        rationale=["Partial response at ≥6 weeks; room to increase dose in this context."],
+
+                if trial_n >= 2:
+                    # ── Trial 2/3 partial response: AUGMENTATION ONLY ──
+                    # Mutually exclusive with switch path — never show primary med list
+                    continue_reco = _make_reco(
+                        p, current_med, intent="continue", active_paths=pathways,
+                        additional_messages=["Partial response: continue current medication and augment."],
+                        rationale=[
+                            "Partial response at Trial "
+                            f"{trial_n} → augmentation pathway "
+                            "[36, 37, 38, 39, 40, 47, 48, 25, 45, 41]."
+                        ],
                         evidence=[
-                            EvidenceItem(variable="Weeks on med", value=str(p.weeks_on_current_antidepressant), fhir_source="Derived"),
-                            EvidenceItem(variable="Current dose (mg)", value=str(p.current_dose_mg), fhir_source="MedicationRequest"),
+                            EvidenceItem(variable="Trial number", value=str(trial_n), fhir_source="Derived"),
                         ],
                         cap_override=cap,
-                    )]
-                    out.rationale.append("Titrate before augmenting when partial response and room remains.")
-                    return state
+                    )
 
-                # At max dose — three-tier augmentation per Steps 6/6a/6b of CLAUDE_MDD.md
-                continue_reco = _make_reco(
-                    p, current_med, intent="continue", active_paths=pathways,
-                    additional_messages=["Partial at max dose: continue and add augmenter."],
-                    rationale=[
-                        "Partial response at maximally tolerated dose → augmentation pathway "
-                        "[36, 37, 38, 39, 40, 47, 48, 25, 45, 41]."
-                    ],
-                    evidence=[
-                        EvidenceItem(variable="Trial number", value=str(trial_n), fhir_source="Derived"),
-                        EvidenceItem(variable="At max dose", value="true", fhir_source="Derived"),
-                    ],
-                    cap_override=max_cap_for_context(p, current_med, pathways),
-                )
+                    if trial_n == 3:
+                        out.non_med_recommendations.append(
+                            "Step 6b — Psychiatric consultation advisable: third-trial partial "
+                            "response exceeds routine primary care management [53, 55]."
+                        )
+                        out.non_med_recommendations.append(
+                            "Reassess before escalating: diagnostic accuracy, medication adherence, "
+                            "comorbidities contributing to treatment resistance [45, 53, 54]."
+                        )
+                        out.non_med_recommendations.append(
+                            "Advanced interventions to discuss with psychiatry: electroconvulsive "
+                            "therapy (ECT), transcranial magnetic stimulation (TMS), ketamine, "
+                            "esketamine [45, 53, 54]."
+                        )
+                        out.warnings.append(
+                            "STAR*D note: 67% cumulative remission across four treatment levels; "
+                            "no definitive evidence base for partial response management after "
+                            "multiple trials [25]."
+                        )
+                        out.rationale.append(
+                            "Step 6b: trial 3 partial response — psychiatric consultation advisable; "
+                            "advanced interventions flagged [25, 45, 53, 54, 55]."
+                        )
+                        out.audit_trail.append("branch:step_6b_trial3_partial")
+                    else:
+                        out.non_med_recommendations.append(
+                            "Reassess before escalating: diagnostic accuracy, medication adherence, "
+                            "comorbidities contributing to treatment resistance [45, 53, 54]."
+                        )
+                        out.rationale.append(
+                            "Step 6a: trial 2 partial response — augmentation recommended [45, 53, 54]."
+                        )
+                        out.audit_trail.append("branch:step_6a_partial_augment")
 
-                if trial_n == 3:
-                    # Step 6b: third-trial partial response
-                    out.non_med_recommendations.append(
-                        "Step 6b — Psychiatric consultation advisable: third-trial partial "
-                        "response exceeds routine primary care management [53, 55]."
-                    )
-                    out.non_med_recommendations.append(
-                        "Reassess before escalating: diagnostic accuracy, medication adherence, "
-                        "comorbidities contributing to treatment resistance [45, 53, 54]."
-                    )
-                    out.non_med_recommendations.append(
-                        "Advanced interventions to discuss with psychiatry: electroconvulsive "
-                        "therapy (ECT), transcranial magnetic stimulation (TMS), ketamine, "
-                        "esketamine [45, 53, 54]."
-                    )
-                    out.warnings.append(
-                        "STAR*D note: 67% cumulative remission across four treatment levels; "
-                        "no definitive evidence base for partial response management after "
-                        "multiple trials [25]."
-                    )
-                    out.rationale.append(
-                        "Step 6b: trial 3 partial response — psychiatric consultation advisable; "
-                        "advanced interventions flagged [25, 45, 53, 54, 55]."
-                    )
                     aug_recs = build_augmentation_recs(
                         p, current_med, pathways, can_recommend, state
                     )
                     out.recommendations = [continue_reco] + aug_recs
-                    out.audit_trail.append("branch:step_6b_trial3_partial")
                     return state
 
-                elif trial_n == 2:
-                    # Step 6a: second-trial partial response
-                    out.non_med_recommendations.append(
-                        "Reassess before escalating: diagnostic accuracy, medication adherence, "
-                        "comorbidities contributing to treatment resistance [45, 53, 54]."
-                    )
-                    out.rationale.append(
-                        "Step 6a: trial 2 partial response — tolerability determines next "
-                        "step [45, 53, 54]."
-                    )
-                    if p.tolerability == "good":
-                        out.rationale.append(
-                            "Good tolerability: augmentation preferred before advancing to "
-                            "trial 3 [45, 53]."
-                        )
-                        aug_recs = build_augmentation_recs(
-                            p, current_med, pathways, can_recommend, state
-                        )
-                        out.recommendations = [continue_reco] + aug_recs
-                        out.audit_trail.append("branch:step_6a_good_tolerability_augment")
+                else:
+                    # ── Trial 1 partial response: NO augmentation ──
+                    # Augmentation is only available at Trial 2 or Trial 3
+                    if not is_at_max_dose_for_context(p, current_med, pathways):
+                        inc_msg = "Partial response: increase dose as tolerated; reassess in ~4–6 weeks."
+                        if p.current_dose_mg is not None:
+                            inc_msg = (
+                                f"Partial response: "
+                                f"{next_dose_step(current_med, float(p.current_dose_mg), cap_override=cap)} "
+                                f"Reassess in ~4–6 weeks."
+                            )
+                        out.recommendations = [_make_reco(
+                            p, current_med, intent="increase", active_paths=pathways,
+                            additional_messages=[inc_msg],
+                            rationale=["Partial response at ≥6 weeks; room to increase dose in this context."],
+                            evidence=[
+                                EvidenceItem(variable="Weeks on med", value=str(p.weeks_on_current_antidepressant), fhir_source="Derived"),
+                                EvidenceItem(variable="Current dose (mg)", value=str(p.current_dose_mg), fhir_source="MedicationRequest"),
+                            ],
+                            cap_override=cap,
+                        )]
+                        out.rationale.append("Trial 1: titrate before considering switch.")
+                        out.audit_trail.append("branch:trial1_partial_increase")
+                        return state
                     else:
+                        # At max dose on Trial 1 — switch to Trial 2 (no augmentation)
                         out.rationale.append(
-                            "Poor tolerability: switch to trial 3 medication "
-                            "(untried class) [25, 55]."
+                            "Trial 1: partial response at max dose — switch to Trial 2 medication [25]."
                         )
-                        pool = third_line_pool()
+                        pool = second_line_pool()
                         picks = pick_two(pool)
                         out.recommendations = [
                             _make_reco(
                                 p, m, intent="switch_to", active_paths=pathways,
-                                additional_messages=[
-                                    _switch_taper_message(current_med, m)
-                                ],
-                                rationale=[
-                                    "Step 6a — poor tolerability: switch to trial 3 "
-                                    "untried class [25, 55]."
-                                ],
+                                additional_messages=[_switch_taper_message(current_med, m)],
+                                rationale=["Trial 1 partial response at max dose: advance to Trial 2 [25]."],
                                 evidence=[
-                                    EvidenceItem(variable="Trial number", value="2", fhir_source="Derived"),
-                                    EvidenceItem(variable="Tolerability", value="poor", fhir_source="Derived"),
+                                    EvidenceItem(variable="Trial number", value="1", fhir_source="Derived"),
+                                    EvidenceItem(variable="At max dose", value="true", fhir_source="Derived"),
                                 ],
                                 cap_override=max_cap_for_context(p, m, pathways),
                             )
@@ -1992,21 +2040,8 @@ class TreatmentSelectionStage(Stage):
                         ]
                         if not out.recommendations:
                             out.warnings.append("No safe switch option remains; clinician review.")
-                        out.audit_trail.append("branch:step_6a_poor_tolerability_switch")
-                    return state
-
-                else:
-                    # Trial 1 (or unspecified) — standard Step 6 augmentation hierarchy
-                    out.rationale.append(
-                        "Step 6: partial response at max dose → three-tier augmentation "
-                        "hierarchy [1, 25, 36, 37, 38, 39, 40, 41, 45, 47, 48]."
-                    )
-                    aug_recs = build_augmentation_recs(
-                        p, current_med, pathways, can_recommend, state
-                    )
-                    out.recommendations = [continue_reco] + aug_recs
-                    out.audit_trail.append("branch:step_6_trial1_augment")
-                    return state
+                        out.audit_trail.append("branch:trial1_partial_max_switch")
+                        return state
 
             if resp_cat == "no_response":
                 if trial_n == 1:
@@ -2546,6 +2581,17 @@ def _build_next_check_in(p: "PatientInput", out: "AlgorithmOutput") -> str:
     has_start  = any(r.intent == "start"     for r in out.recommendations)
     if has_switch or has_start:
         return "Week 2: tolerability check and adherence assessment"
+    # Adequate response / remission — next check-in based on maintenance duration
+    if out.response_category == "remission_or_response":
+        episodes = p.prior_depressive_episodes
+        if episodes is None:
+            return "Month 3: maintenance reassessment — discuss duration with patient"
+        elif episodes == 0:
+            return "Month 6\u20139: reassess for continuation vs taper (first episode)"
+        elif episodes == 1:
+            return "Month 6: reassess maintenance — continue at least 2 years (recurrent)"
+        else:
+            return "Month 6: reassess maintenance — consider indefinite continuation (recurrent)"
     if p.phq_current <= 9:
         return "Week 8\u201312: reassess PHQ-9 and response to treatment"
     weeks = p.weeks_on_current_antidepressant or 0
@@ -2665,6 +2711,20 @@ def _format_text_report(report: dict) -> str:
             if aug.get("rationale"):
                 lines.append(f"      {aug['rationale']}")
 
+    if report.get("maintenance_plan"):
+        lines.append(f"\n{SEP}")
+        lines.append("  MAINTENANCE PLAN")
+        lines.append(SEP)
+        for mp in report["maintenance_plan"]:
+            lines.append(f"  \u2022 {mp}")
+
+    if report.get("relapse_prevention"):
+        lines.append(f"\n{SEP}")
+        lines.append("  RELAPSE PREVENTION")
+        lines.append(SEP)
+        for rp in report["relapse_prevention"]:
+            lines.append(f"  \u2022 {rp}")
+
     if report.get("next_check_in"):
         lines.append(f"\n{SEP}")
         lines.append("  NEXT CHECK-IN")
@@ -2701,6 +2761,7 @@ class CitationTracker:
         "Therapy",
         "Switching Protocol",
         "Augmentation Plan",
+        "Maintenance Plan",
         "Next Check-In",
         "Safety Flags",
         "Medications Excluded",
@@ -2790,29 +2851,60 @@ class ReportFormatterStage(Stage):
         tracker.cite_from_texts(out.switching_protocol, "Switching Protocol")
         tracker.cite_from_texts(out.warnings, "Safety Flags")
         tracker.cite_from_texts(out.medications_excluded, "Medications Excluded")
+        tracker.cite_from_texts(out.maintenance_plan, "Maintenance Plan")
         tracker.cite_from_texts(
             [next_check_in] if next_check_in else [], "Next Check-In"
         )
         references = tracker.build()
 
+        # ── Response-driven section gating ─────────────────────────────────
+        resp = out.response_category  # "remission_or_response", "partial", "no_response", or None
+        trial_n = p.trial_number or 1
+
         report: dict = {"patient_summary": patient_summary}
+        if resp:
+            report["response_category"] = resp
         if safety_flags:
             report["safety_flags"] = safety_flags
         if active_pathways:
             report["active_pathways"] = active_pathways
+
         recs_section: dict = {}
-        if medications:
-            recs_section["medications"] = medications
+        # Partial response (Trial 2/3): suppress primary medication list, show augmentation
+        # Adequate/remission: suppress primary medication list, show maintenance
+        # Inadequate: show primary medication list (switch options), suppress augmentation
+        if resp == "partial" and trial_n >= 2:
+            # No primary medication list — augmentation plan replaces it
+            pass
+        elif resp == "remission_or_response":
+            # No primary medication list — maintenance plan replaces it
+            pass
+        else:
+            if medications:
+                recs_section["medications"] = medications
         if therapy:
             recs_section["therapy"] = therapy
         if recs_section:
             report["recommendations"] = recs_section
-        if switch_entries:
+
+        # Switching protocol only for inadequate response (switch path)
+        if resp != "partial" and switch_entries:
             report["switching_protocol"] = switch_entries
         if meds_excluded:
             report["medications_excluded"] = meds_excluded
-        if augmentation:
+
+        # Augmentation plan only for partial response at Trial 2/3
+        if resp == "partial" and trial_n >= 2 and augmentation:
             report["augmentation_plan"] = augmentation
+
+        # Maintenance plan for adequate response / remission
+        if resp == "remission_or_response" and out.maintenance_plan:
+            report["maintenance_plan"] = out.maintenance_plan
+            # MoodCalmer dCBT for relapse prevention
+            report.setdefault("relapse_prevention", []).append(
+                "MoodCalmer dCBT — digital cognitive behavioral therapy for relapse prevention"
+            )
+
         report["next_check_in"] = next_check_in
         report["references"] = references
 
