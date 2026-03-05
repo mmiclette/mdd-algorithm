@@ -938,4 +938,11 @@ with col_right:
 
     # ── Full text report ───────────────────────────────────────────────────────
     with st.expander("Full text report (copy-paste)", expanded=False):
-        st.code(text_report, language=None)
+        st.markdown(
+            f'<pre style="background-color:#F5F5F5;color:#212121;'
+            f'border:1px solid #BDBDBD;border-radius:6px;'
+            f'padding:1rem;font-size:0.78rem;line-height:1.5;'
+            f'white-space:pre-wrap;word-break:break-word;overflow-x:auto;">'
+            f'{_e(text_report)}</pre>',
+            unsafe_allow_html=True,
+        )
