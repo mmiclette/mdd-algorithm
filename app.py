@@ -24,25 +24,98 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── Force light mode ───────────────────────────────────────────────────────────
+# ── Force light mode — comprehensive widget overrides ─────────────────────────
 st.markdown("""
-    <style>
-        /* Force light mode */
-        [data-testid="stAppViewContainer"] {
-            background-color: #FFFFFF;
-            color: #212121;
-        }
-        [data-testid="stSidebar"] {
-            background-color: #FFFFFF;
-        }
-        .stApp {
-            background-color: #FFFFFF;
-        }
-        /* Override dark mode preference */
-        :root {
-            color-scheme: light;
-        }
-    </style>
+<style>
+    /* Main background */
+    .stApp, [data-testid="stAppViewContainer"],
+    [data-testid="stMain"] {
+        background-color: #FFFFFF !important;
+        color: #212121 !important;
+    }
+
+    /* All input widgets */
+    [data-testid="stNumberInput"] input,
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    .stSelectbox select,
+    [data-baseweb="select"] div,
+    [data-baseweb="input"] input,
+    [data-baseweb="textarea"] textarea {
+        background-color: #FFFFFF !important;
+        color: #212121 !important;
+        border-color: #BDBDBD !important;
+    }
+
+    /* Dropdown menus */
+    [data-baseweb="popover"] ul,
+    [data-baseweb="menu"] ul,
+    [role="listbox"],
+    [role="option"] {
+        background-color: #FFFFFF !important;
+        color: #212121 !important;
+    }
+
+    /* Selected option in dropdown */
+    [aria-selected="true"] {
+        background-color: #E8EAF6 !important;
+        color: #212121 !important;
+    }
+
+    /* Hover state */
+    [role="option"]:hover {
+        background-color: #F5F5F5 !important;
+        color: #212121 !important;
+    }
+
+    /* Checkboxes */
+    [data-testid="stCheckbox"] label,
+    .stCheckbox label {
+        color: #212121 !important;
+    }
+
+    /* Number input buttons */
+    [data-testid="stNumberInput"] button {
+        background-color: #FFFFFF !important;
+        color: #212121 !important;
+        border-color: #BDBDBD !important;
+    }
+
+    /* Labels */
+    label, .stLabel, p {
+        color: #212121 !important;
+    }
+
+    /* Section headers */
+    h1, h2, h3 {
+        color: #161BAA !important;
+    }
+
+    /* Dividers */
+    hr {
+        border-color: #BDBDBD !important;
+    }
+
+    /* Expander */
+    [data-testid="stExpander"] {
+        background-color: #FFFFFF !important;
+        border-color: #BDBDBD !important;
+    }
+    [data-testid="stExpander"] summary {
+        color: #757575 !important;
+    }
+
+    /* Info and warning boxes */
+    [data-testid="stInfo"] {
+        background-color: #E3F2FD !important;
+        color: #212121 !important;
+    }
+
+    /* Force color scheme */
+    :root {
+        color-scheme: light !important;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 # ── NeuroFlow palette ─────────────────────────────────────────────────────────
