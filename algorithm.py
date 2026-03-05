@@ -1415,21 +1415,28 @@ def _classes_trialed(p: "PatientInput") -> Set[str]:
     return classes
 
 def _count_failed_trials(p: "PatientInput") -> int:
-    """Count unique failed medication keys."""
-    return len({t.medication_key.strip().lower() for t in p.prior_trials
-                if t.medication_key and t.outcome in {"no_response", "intolerant"}})
+    """Count unique failed medication keys (prior_trials + current med if failed)."""
+    failed = {t.medication_key.strip().lower() for t in p.prior_trials
+              if t.medication_key and t.outcome in {"no_response", "intolerant"}}
+    # If the current antidepressant has a no_response outcome, count it too
+    ck = (p.current_antidepressant_key or "").strip().lower()
+    if ck and ck not in failed:
+        _resp = categorize_response(p.baseline_phq, p.phq_current, p.weeks_on_current_antidepressant)
+        if _resp == "no_response":
+            failed.add(ck)
+    return len(failed)
 
 def _class_route_label(p: "PatientInput", classes: Set[str]) -> str:
     """Compute the trial label string for class-based routing."""
     n = 1 + _count_failed_trials(p)
     if "TCA" in classes:
         return f"Trial {n} — Advanced Interventions Required"
-    if "SSRI" in classes and "SNRI" in classes and ("NDRI" in classes or "NaSSA" in classes):
+    if len(classes & {"SSRI", "SNRI"}) == 2 and classes & {"NDRI", "NaSSA"}:
         return f"Trial {n} — Psychiatric Consultation Required"
-    if "SSRI" in classes and "SNRI" in classes:
+    if len(classes & {"SSRI", "SNRI"}) == 2:
         return f"Trial {n} — TRD"
-    if "SSRI" in classes:
-        return "Trial 2"
+    if len(classes) >= 1:
+        return f"Trial {n}"
     return "Trial 1"
 
 
@@ -1912,6 +1919,15 @@ class TreatmentSelectionStage(Stage):
 
         tried_meds, failed_meds, successful_meds = apply_history_sets(p)
         blocked = set(state.blocked_candidates)
+
+        # If the current antidepressant has failed, treat it as a completed failed trial
+        current_med_failed = False
+        if resp_cat == "no_response" and (p.current_antidepressant_key or "").strip().lower():
+            _ck = p.current_antidepressant_key.strip().lower()
+            tried_meds.add(_ck)
+            failed_meds.add(_ck)
+            current_med_failed = True
+
         classes_tried = _classes_trialed(p)
         trial_n = 1 + _count_failed_trials(p)
         trial_label = _class_route_label(p, classes_tried)
@@ -2264,8 +2280,16 @@ class TreatmentSelectionStage(Stage):
             )
             return state
 
-        # ── RULE 1: No prior trials ───────────────────────────────────────────
+        # ── RULE 1: First-line / next class ──────────────────────────────────
         out.audit_trail.append("route:rule1_first_line")
+        # Determine intent: switch_to when current med has failed, start otherwise
+        _r1_intent: RecommendationIntent = "switch_to" if current_med_failed else "start"
+        _r1_rationale = (
+            f"{trial_label}: switching from failed {MED_KB.get(current_med, {}).get('class', '')} "
+            f"— next class recommended [19, 20, 26, 102]."
+            if current_med_failed
+            else "Trial 1: first-line selection [19, 20, 26]."
+        )
         # Standard first-line set: escitalopram, sertraline, bupropion
         first_line = ["escitalopram", "sertraline", "bupropion_xl"]
         # Add comorbidity-driven options
@@ -2281,12 +2305,15 @@ class TreatmentSelectionStage(Stage):
 
         for m in first_line:
             if can_recommend(m):
+                _r1_msg = (
+                    _switch_taper_message(current_med, m)
+                    if current_med_failed and current_med else
+                    "Initiate; titrate every 1–2 weeks; reassess at 6 weeks for response. [3, 4]"
+                )
                 out.recommendations.append(_make_reco_with_notes(
-                    m, intent="start",
-                    extra_messages=[
-                        "Initiate; titrate every 1–2 weeks; reassess at 6 weeks for response. [3, 4]"
-                    ],
-                    extra_rationale=["Trial 1: first-line selection [19, 20, 26]."],
+                    m, intent=_r1_intent,
+                    extra_messages=[_r1_msg],
+                    extra_rationale=[_r1_rationale],
                     evidence=[
                         EvidenceItem(variable="PHQ-9 current", value=str(p.phq_current), fhir_source="Observation"),
                         EvidenceItem(variable="Active paths", value=str(pathways), fhir_source="Derived"),
@@ -2298,7 +2325,11 @@ class TreatmentSelectionStage(Stage):
             out.warnings.append("All candidates blocked; clinician review required.")
             out.rationale.append("All options blocked or excluded by history.")
         else:
-            out.rationale.append("Trial 1: first-line selection per all active path(s).")
+            out.rationale.append(
+                f"{trial_label}: switching from failed medication — next class recommended."
+                if current_med_failed
+                else "Trial 1: first-line selection per all active path(s)."
+            )
         return state
 
 
