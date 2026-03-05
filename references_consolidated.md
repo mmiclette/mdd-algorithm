@@ -162,3 +162,16 @@
 99. Karyotaki E et al. Internet-Based CBT for Depression: Systematic Review and Individual Patient Data Meta-Analysis. JAMA Psychiatry. 2021;78(4):361-371.
 100. Cuijpers P et al. Effectiveness and Acceptability of Cognitive Behavior Therapy Delivery Formats in Adults With Depression: A Network Meta-Analysis. JAMA Psychiatry. 2019;76(7):700-707.
 101. Karyotaki E et al. Efficacy of Self-guided Internet-Based Cognitive Behavioral Therapy in the Treatment of Depressive Symptoms. JAMA Psychiatry. 2017;74(4):351-359.
+
+## Switching and Class-Based Routing
+
+102. Papakostas GI, Fava M, Thase ME. Treatment of SSRI-resistant Depression: Meta-Analysis Comparing Within- Versus Across-Class Switches. Biol Psychiatry. 2008;63(7):699-704.
+103. Pérez V et al. The DEPRE'5 Study: Pragmatic RCT Comparing Treatment Strategies in Major Depression After Failed SSRI Treatment. Br J Psychiatry. 2025.
+104. McIntyre RS et al. Treatment-Resistant Depression: Definition, Prevalence, Detection, Management, and Investigational Interventions. World Psychiatry. 2023;22(3):394-412.
+105. Steffens DC. Treatment-Resistant Depression in Older Adults. N Engl J Med. 2024;390(7):630-639.
+106. Strobl EV. Consistent Differential Effects of Bupropion and Mirtazapine in Major Depression. J Affect Disord. 2025;388:119551.
+107. Watanabe N et al. Mirtazapine Versus Other Antidepressive Agents for Depression. Cochrane Database Syst Rev. 2011;(12):CD006528.
+108. Potter WZ, Rudorfer MV, Manji H. The Pharmacologic Treatment of Depression. N Engl J Med. 1991;325(9):633-42.
+109. Gaddey HL, Mason B, Naik A. Depression: Managing Resistance and Partial Response to Treatment. Am Fam Physician. 2024;109(5):410-416.
+110. Anand A et al. Ketamine versus ECT for Nonpsychotic Treatment-Resistant Major Depression. N Engl J Med. 2023;388(25):2315-2325.
+111. Marques MG et al. Next-Step Treatment Options for Treatment-Resistant Depression: Mayo Clinic Depression Center Panel. J Clin Psychiatry. 2026;87(1):25cs16066.

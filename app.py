@@ -516,6 +516,15 @@ with col_left:
         fatigue_anhedonia          = st.toggle("Fatigue / anhedonia")
         sexual_dysfunction_concern = st.toggle("Sexual dysfunction concern")
 
+    mh_col3, mh_col4 = st.columns(2)
+    with mh_col3:
+        seizure_history            = st.toggle("Seizure history")
+        eating_disorder            = st.toggle("Eating disorder")
+        chronic_pain               = st.toggle("Chronic pain")
+    with mh_col4:
+        psychosis_positive         = st.toggle("Psychotic features")
+        daytime_sedation_concern   = st.toggle("Daytime sedation concern")
+
     egfr            = None
     qtc_ms          = None
     postpartum_days = None
@@ -582,6 +591,11 @@ if generate_clicked:
         "anxiety_comorbidity":         anxiety_comorbidity,
         "fatigue_anhedonia":           fatigue_anhedonia,
         "sexual_dysfunction_concern":  sexual_dysfunction_concern,
+        "seizure_history":             seizure_history,
+        "eating_disorder":             eating_disorder,
+        "psychosis_positive":          psychosis_positive,
+        "chronic_pain":                chronic_pain,
+        "daytime_sedation_concern":    daytime_sedation_concern,
     }
 
     if is_followup and current_antidepressant_key:

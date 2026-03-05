@@ -262,34 +262,66 @@ management. Citations: [45, 53, 54, 55]
 
 ---
 
-### Step 7: Inadequate Response — Switch Pathway
+### Step 7: Inadequate Response — Class-Based Routing
 
-Use when patient has no meaningful response after adequate trial (4–12 weeks at maximally
-tolerated dose), or does not tolerate current medication. Evidence shows no clear superiority
-of switching over augmentation after initial failure; clinical judgment guides the choice.
-Citations: [21, 25, 36, 39, 40, 42]
+Routing is determined by which medication **classes** appear in the patient's prior trials,
+not by trial count alone. The algorithm evaluates `_classes_trialed(p)` — the set of
+medication classes (SSRI, SNRI, NDRI, NaSSA, TCA, SGA) present in `prior_trials` and
+`current_antidepressant_key`. Rules are evaluated in reverse priority order (Rule 5 first,
+Rule 1 as fallback). Citations: [102, 103, 104, 105, 106, 107, 108, 109, 110, 111]
 
-**Second trial:**
-Switch to antidepressant in same OR different class [25, 36, 39, 40]
+**Rule 1 — First Line (no prior trials):**
+- Offer escitalopram, sertraline, bupropion XL [19, 20, 26]
+- Add mirtazapine if insomnia; add duloxetine if chronic pain/fibromyalgia
+- Comorbidity-driven exclusions: bupropion excluded if anxiety, seizure history, or
+  eating disorder [28]; citalopram excluded if cardiac history [78, 79]; paroxetine
+  excluded if pregnant [73]; all SGAs excluded if dementia [43]
 
-**Third trial:**
-Select from a medication class not previously trialed [36, 39, 40, 55]:
-- SSRI (if not yet tried)
-- SNRI (if not yet tried)
-- Bupropion (if not yet tried)
-- Mirtazapine (if not yet tried)
-- TCA: nortriptyline or desipramine — require ECG before initiation and at each dose
-  increase; higher lethality in overdose; use only after standard options exhausted [3, 54, 55]
+**Rule 2 — SNRI Switch (SSRI tried, SNRI not tried):**
+- Recommend venlafaxine XR and duloxetine as switch options [102, 103, 105]
+- Include switching protocol from current SSRI to SNRI
+- No TRD flag at this stage
 
-**Trial counting rule:**
-- Trial 1 failure → second trial (switch same or different class) [36, 39]
-- Trial 2 failure → third trial (untried class) or augmentation [39, 40, 45]
-- Trial 3 inadequate response → psychiatric consultation required [55]
-- Trial 3 partial response → psychiatric consultation advisable; see Step 6b [53, 54, 55]
+**Rule 3 — TRD Step 2 (SSRI + SNRI tried, NDRI/NaSSA not tried):**
+- Recommend bupropion XL and mirtazapine [106, 107, 28]
+- Soft TRD warning: "Treatment-Resistant Depression — consider psychiatric
+  consultation" [104, 105]
+- Soft consultation block appears AFTER medication recommendations
+- Include symptom-driven selection notes for each medication
+
+**Rule 4 — Hard Psychiatric Consultation (SSRI + SNRI + (NDRI or NaSSA) tried):**
+- Hard consultation warning appears FIRST [108, 109]
+- TCA options (nortriptyline, desipramine) listed below, labeled "pending psychiatric
+  input" — do not initiate without psychiatric consultation [108, 109]
+- PCP actions while awaiting consultation: continue current med, optimize psychotherapy,
+  reassess diagnosis, confirm adherence, monitor PHQ-9 and suicidality [104, 105]
+
+**Rule 5 — Advanced Interventions (TCA tried, OR PHQ ≥ 20 + suicidality, OR psychosis):**
+- Mandatory psychiatric referral [110, 111]
+- No medications recommended — only advanced interventions:
+  ECT, TMS, IV ketamine, esketamine (Spravato) [110, 111]
 
 **Trial adequacy definition:**
 Adequate trial = 4–12 weeks at maximally tolerated dose [25]
 Prior medication names must be tracked to exclude previously failed agents [26]
+
+**Comorbidity-driven exclusions (applied at all rules):**
+- Anxiety → exclude bupropion (activating profile) [28]
+- Seizure history → exclude bupropion (lowers seizure threshold) [28]
+- Eating disorder → exclude bupropion (contraindicated in bulimia/anorexia) [28]
+- Cardiac history → exclude citalopram (QTc prolongation risk) [78, 79]
+- Pregnant → exclude paroxetine (cardiac malformation risk) [73]
+- Dementia → exclude all SGAs (increased mortality, FDA black box) [43]
+
+**Selection notes (every factor that changes selection must produce a visible note):**
+- Elevation notes: fatigue/anhedonia → bupropion preferred [106, 28];
+  sexual dysfunction → bupropion preferred [28]
+- Preference notes: insomnia → mirtazapine preferred [107, 28];
+  anxiety → SSRIs preferred [28]; chronic pain → duloxetine added [35];
+  cardiac → sertraline preferred [78, 79]
+- Dose modification notes: age ≥ 60 + escitalopram → 10mg cap [78, 80];
+  hepatic impairment → dose reduced [85, 86]; renal impairment → dose reduced [83, 84];
+  cardiac + SNRI → BP monitoring [31, 32]
 
 ---
 
@@ -386,18 +418,16 @@ Flu-like symptoms, Insomnia, Nausea, Imbalance, Sensory disturbances, Hyperarous
 
 ### Step 8: Treatment-Resistant Depression
 
-Triggered after 3 or more failed adequate trials, or third trial inadequate or partial response.
-Citations: [24, 42, 45, 52, 53, 54]
+TRD is now integrated into the class-based routing system (Step 7, Rules 3–5).
+Citations: [104, 105, 108, 109, 110, 111]
 
-- Psychiatric consultation is mandatory [53, 55]
-- Reassess diagnostic accuracy, medication adherence, and comorbid conditions before
-  escalating [45, 53, 54]
-- Consider: atypical antipsychotic augmentation, lithium augmentation, MAOI switch [42, 52]
-- Advanced interventions to discuss with psychiatry:
-  - Esketamine: FDA-approved for treatment-resistant depression [24]
-  - Electroconvulsive therapy (ECT) [53, 54]
-  - Transcranial magnetic stimulation (TMS) [53]
-  - Ketamine [53, 54]
+- Rule 3 (SSRI + SNRI failed): soft TRD flag, psychiatric consultation recommended [104, 105]
+- Rule 4 (SSRI + SNRI + NDRI/NaSSA failed): hard consultation required, TCA options
+  pending psychiatric input [108, 109]
+- Rule 5 (TCA failed, or PHQ ≥ 20 + suicidality, or psychosis): mandatory psychiatric
+  referral, advanced interventions only (ECT, TMS, ketamine, esketamine) [110, 111]
+- Reassess diagnostic accuracy, medication adherence, and comorbid conditions at every
+  TRD escalation step [104, 105]
 
 ---
 
@@ -841,3 +871,16 @@ for the user to resolve. Do not infer or fabricate citation assignments.
 
 85. Mullish BH et al. Depression and Antidepressants in Patients With Chronic Liver Disease or Liver Transplantation. Aliment Pharmacol Ther. 2014;40(8):880-92.
 86. Mauri MC et al. Pharmacokinetics of Antidepressants in Patients With Hepatic Impairment. Clin Pharmacokinet. 2014;53(12):1069-81.
+
+### Switching and Class-Based Routing
+
+102. Papakostas GI, Fava M, Thase ME. Treatment of SSRI-resistant Depression: Meta-Analysis Comparing Within- Versus Across-Class Switches. Biol Psychiatry. 2008;63(7):699-704.
+103. Pérez V et al. The DEPRE'5 Study: Pragmatic RCT Comparing Treatment Strategies in Major Depression After Failed SSRI Treatment. Br J Psychiatry. 2025.
+104. McIntyre RS et al. Treatment-Resistant Depression: Definition, Prevalence, Detection, Management, and Investigational Interventions. World Psychiatry. 2023;22(3):394-412.
+105. Steffens DC. Treatment-Resistant Depression in Older Adults. N Engl J Med. 2024;390(7):630-639.
+106. Strobl EV. Consistent Differential Effects of Bupropion and Mirtazapine in Major Depression. J Affect Disord. 2025;388:119551.
+107. Watanabe N et al. Mirtazapine Versus Other Antidepressive Agents for Depression. Cochrane Database Syst Rev. 2011;(12):CD006528.
+108. Potter WZ, Rudorfer MV, Manji H. The Pharmacologic Treatment of Depression. N Engl J Med. 1991;325(9):633-42.
+109. Gaddey HL, Mason B, Naik A. Depression: Managing Resistance and Partial Response to Treatment. Am Fam Physician. 2024;109(5):410-416.
+110. Anand A et al. Ketamine versus ECT for Nonpsychotic Treatment-Resistant Major Depression. N Engl J Med. 2023;388(25):2315-2325.
+111. Marques MG et al. Next-Step Treatment Options for Treatment-Resistant Depression: Mayo Clinic Depression Center Panel. J Clin Psychiatry. 2026;87(1):25cs16066.

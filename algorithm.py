@@ -263,6 +263,27 @@ MED_KB: Dict[MedicationKey, Dict[str, Any]] = {
         "bp_message_relevant": True,
         "qt_risk": "none",
     },
+    # --- TCAs (require psychiatric consultation — Rule 4) ---
+    "nortriptyline": {
+        "display": "Nortriptyline (Pamelor)",
+        "class": "TCA",
+        "start_dose": "25 mg daily",
+        "dose_range": "100–150 mg/day",
+        "titration": "Titrate by 25 mg every 3–7 days; plasma level target 50–150 ng/mL. ECG at baseline and each dose increase [108].",
+        "monitoring": ["ECG at baseline and each dose increase [108].", "Plasma levels: target 50–150 ng/mL [108]."],
+        "bp_message_relevant": False,
+        "qt_risk": "known",
+    },
+    "desipramine": {
+        "display": "Desipramine (Norpramin)",
+        "class": "TCA",
+        "start_dose": "25–50 mg daily",
+        "dose_range": "100–300 mg/day",
+        "titration": "Titrate by 25–50 mg every 3–7 days; plasma levels required. ECG at baseline and each dose increase [108].",
+        "monitoring": ["ECG at baseline and each dose increase [108].", "Plasma levels required [108]."],
+        "bp_message_relevant": False,
+        "qt_risk": "known",
+    },
 }
 
 DOSE_STEPS_MG: Dict[str, List[float]] = {
@@ -289,6 +310,8 @@ DOSE_STEPS_MG: Dict[str, List[float]] = {
     "methylphenidate":  [5, 10, 20, 30, 40, 60],
     "lurasidone":       [20, 40, 60, 80],
     "lisdexamfetamine": [20, 30, 40, 50, 60, 70],
+    "nortriptyline":    [25, 50, 75, 100, 150],
+    "desipramine":      [25, 50, 100, 150, 200, 300],
 }
 
 DOSE_MIN_MAX_MG: Dict[str, Tuple[float, float]] = {
@@ -315,6 +338,8 @@ DOSE_MIN_MAX_MG: Dict[str, Tuple[float, float]] = {
     "methylphenidate":    (5, 60),
     "lurasidone":         (20, 80),
     "lisdexamfetamine":   (20, 70),
+    "nortriptyline":      (25, 150),
+    "desipramine":        (25, 300),
 }
 
 # Renal dose caps (CrCl/eGFR bucket-based)
@@ -537,6 +562,11 @@ class PatientInput(BaseModel):
     anxiety_comorbidity: bool = False
     sexual_dysfunction_concern: bool = False
     fatigue_anhedonia: bool = False
+    seizure_history: bool = False
+    eating_disorder: bool = False
+    psychosis_positive: bool = False
+    chronic_pain: bool = False
+    daytime_sedation_concern: bool = False
     therapy_preference: Optional[Literal["medication", "therapy", "combination"]] = None
 
     @field_validator("current_antidepressant_key")
@@ -1352,6 +1382,57 @@ TCA_AD_KEYS: frozenset = frozenset({
     "clomipramine", "doxepin",
 })
 
+SGA_KEYS = frozenset({"aripiprazole", "quetiapine", "lurasidone", "brexpiprazole",
+                       "risperidone", "olanzapine"})
+
+# ── Class-based routing helpers ──────────────────────────────────────────────
+def _classes_trialed(p: "PatientInput") -> Set[str]:
+    """Return the set of medication classes that appear in prior_trials."""
+    classes: Set[str] = set()
+    for t in p.prior_trials:
+        mk = (t.medication_key or "").strip().lower()
+        if not mk:
+            continue
+        if mk in SSRI_KEYS:    classes.add("SSRI")
+        elif mk in SNRI_KEYS:  classes.add("SNRI")
+        elif mk in BUP_KEYS:   classes.add("NDRI")
+        elif mk in MIRT_KEYS:  classes.add("NaSSA")
+        elif mk in TCA_AD_KEYS: classes.add("TCA")
+        elif mk in SGA_KEYS:   classes.add("SGA")
+        elif mk in MED_KB:
+            classes.add(MED_KB[mk].get("class", "Other"))
+    # Also count the current antidepressant
+    ck = (p.current_antidepressant_key or "").strip().lower()
+    if ck:
+        if ck in SSRI_KEYS:    classes.add("SSRI")
+        elif ck in SNRI_KEYS:  classes.add("SNRI")
+        elif ck in BUP_KEYS:   classes.add("NDRI")
+        elif ck in MIRT_KEYS:  classes.add("NaSSA")
+        elif ck in TCA_AD_KEYS: classes.add("TCA")
+        elif ck in SGA_KEYS:   classes.add("SGA")
+        elif ck in MED_KB:
+            classes.add(MED_KB[ck].get("class", "Other"))
+    return classes
+
+def _count_failed_trials(p: "PatientInput") -> int:
+    """Count unique failed medication keys."""
+    return len({t.medication_key.strip().lower() for t in p.prior_trials
+                if t.medication_key and t.outcome in {"no_response", "intolerant"}})
+
+def _class_route_label(p: "PatientInput", classes: Set[str]) -> str:
+    """Compute the trial label string for class-based routing."""
+    n = 1 + _count_failed_trials(p)
+    if "TCA" in classes:
+        return f"Trial {n} — Advanced Interventions Required"
+    if "SSRI" in classes and "SNRI" in classes and ("NDRI" in classes or "NaSSA" in classes):
+        return f"Trial {n} — Psychiatric Consultation Required"
+    if "SSRI" in classes and "SNRI" in classes:
+        return f"Trial {n} — TRD"
+    if "SSRI" in classes:
+        return "Trial 2"
+    return "Trial 1"
+
+
 # Atypical antipsychotics in order of preference per [44]
 SGA_AUGMENT_ORDER = [
     "aripiprazole",   # first choice — strongest evidence; superior efficacy/acceptability [44]
@@ -1823,16 +1904,20 @@ class TreatmentSelectionStage(Stage):
             out.audit_trail.append("selection_skipped:stop_reason")
             return state
 
-        pathways: List[str] = out.pathway_applied   # now a list
+        pathways: List[str] = out.pathway_applied
         resp_cat = categorize_response(p.baseline_phq, p.phq_current, p.weeks_on_current_antidepressant)
         out.audit_trail.append(f"response_category={resp_cat}")
         if resp_cat in {"remission_or_response", "partial", "no_response"}:
             out.response_category = resp_cat
-        trial_n = estimate_trial_number(p)
-        out.audit_trail.append(f"trial_number={trial_n}")
 
         tried_meds, failed_meds, successful_meds = apply_history_sets(p)
         blocked = set(state.blocked_candidates)
+        classes_tried = _classes_trialed(p)
+        trial_n = 1 + _count_failed_trials(p)
+        trial_label = _class_route_label(p, classes_tried)
+        out.audit_trail.append(f"trial_number={trial_n}")
+        out.audit_trail.append(f"classes_trialed={sorted(classes_tried)}")
+        out.audit_trail.append(f"trial_label={trial_label}")
 
         def can_recommend(m: str) -> bool:
             if m not in MED_KB:                          return False
@@ -1844,79 +1929,105 @@ class TreatmentSelectionStage(Stage):
 
         current_med = (p.current_antidepressant_key or "").strip().lower() or None
 
-        # --------------------------------------------------------
-        # Pool builders — merge preferred lists from all active paths
-        # --------------------------------------------------------
-        def first_line_pool() -> List[str]:
-            # Perinatal constrains the pool absolutely
-            if "antepartum" in pathways or "postpartum" in pathways:
-                return ["sertraline", "escitalopram", "fluoxetine", "citalopram"]
+        # ── Comorbidity-driven exclusions (Part 3) ─────────────────────────────
+        if p.anxiety_comorbidity and "bupropion_xl" not in blocked:
+            blocked.add("bupropion_xl")
+            state.exclusion_reasons["bupropion_xl"] = (
+                "Bupropion — avoided due to comorbid anxiety; "
+                "activating profile may worsen anxiety symptoms [28]"
+            )
+            state.blocked_candidates.add("bupropion_xl")
+        if p.seizure_history and "bupropion_xl" not in blocked:
+            blocked.add("bupropion_xl")
+            state.exclusion_reasons["bupropion_xl"] = (
+                "Bupropion — avoided due to seizure history; "
+                "lowers seizure threshold [28]"
+            )
+            state.blocked_candidates.add("bupropion_xl")
+        if p.eating_disorder and "bupropion_xl" not in blocked:
+            blocked.add("bupropion_xl")
+            state.exclusion_reasons["bupropion_xl"] = (
+                "Bupropion — avoided due to eating disorder; "
+                "contraindicated in bulimia/anorexia [28]"
+            )
+            state.blocked_candidates.add("bupropion_xl")
+        if p.cardiac_history and "citalopram" not in blocked:
+            blocked.add("citalopram")
+            state.exclusion_reasons["citalopram"] = (
+                "Citalopram — avoided due to cardiac history; "
+                "QTc prolongation risk [78, 79]"
+            )
+            state.blocked_candidates.add("citalopram")
+        if p.pregnant and "paroxetine" not in blocked:
+            blocked.add("paroxetine")
+            state.exclusion_reasons["paroxetine"] = (
+                "Paroxetine — avoided in pregnancy; "
+                "cardiac malformation risk [73]"
+            )
+            state.blocked_candidates.add("paroxetine")
+        if p.dementia:
+            for _sga in SGA_KEYS:
+                if _sga not in blocked:
+                    blocked.add(_sga)
+                    state.exclusion_reasons[_sga] = (
+                        f"{MED_KB.get(_sga, {}).get('display', _sga)} — "
+                        "increased mortality risk in older adults with dementia; "
+                        "FDA black box warning [43]"
+                    )
+                    state.blocked_candidates.add(_sga)
 
-            # Pediatric pool (age-gated within peds path)
-            if "peds" in pathways:
-                if p.age < 12:
-                    return ["fluoxetine"]
-                return ["fluoxetine", "escitalopram", "sertraline"]
+        # ── Selection note builder ─────────────────────────────────────────────
+        def _selection_notes(med_key: str) -> List[str]:
+            """Return patient-specific selection notes for a medication (Part 3)."""
+            notes: List[str] = []
+            # Elevation notes
+            if p.fatigue_anhedonia and med_key == "bupropion_xl":
+                notes.append("First choice given prominent fatigue and anhedonia [106, 28]")
+            if p.sexual_dysfunction_concern and med_key == "bupropion_xl":
+                notes.append("Preferred given sexual dysfunction concern — lowest sexual side effect burden in class [28]")
+            # Preference notes
+            if p.insomnia and med_key == "mirtazapine":
+                notes.append("Preferred given insomnia — sedating and appetite-stimulating properties [107, 28]")
+            if p.anxiety_comorbidity and med_key in SSRI_KEYS:
+                notes.append("Preferred given comorbid anxiety — bupropion avoided due to activating profile [28]")
+            if (p.fibromyalgia or p.chronic_pain) and med_key == "duloxetine":
+                notes.append("Added given comorbid chronic pain — dual indication for pain and depression [35]")
+            if p.cardiac_history and med_key == "sertraline":
+                notes.append("Preferred SSRI given cardiac history — lowest QTc risk in class [78, 79]")
+            # Dose modification notes
+            if p.age >= 60 and med_key == "escitalopram":
+                notes.append("Dose capped at 10mg/day — age-related QTc risk [78, 80]")
+            if p.hepatic_impairment and med_key in HEPATIC_START_DOSES:
+                notes.append("Dose reduced — hepatic impairment; reduced clearance [85, 86]")
+            renal_val = p.crcl_ml_min if p.crcl_ml_min is not None else p.egfr_ml_min_1_73
+            if renal_val is not None and renal_val < 30 and med_key in RENAL_MAX_CAPS_MG:
+                notes.append("Dose reduced — renal impairment; reduced clearance [83, 84]")
+            if p.cardiac_history and med_key == "venlafaxine_xr":
+                notes.append("Monitor BP — SNRI may elevate blood pressure; baseline and follow-up BP required [31, 32]")
+            if p.cardiac_history and med_key == "duloxetine":
+                notes.append("Monitor BP — SNRI may elevate blood pressure; baseline and follow-up BP required [31, 32]")
+            # Mirtazapine caution
+            if med_key == "mirtazapine":
+                if (p.bmi is not None and p.bmi >= 30) or p.daytime_sedation_concern:
+                    notes.append("Use with caution given weight gain risk [107]")
+            return notes
 
-            seen: Set[str] = set()
-            merged: List[str] = []
+        def _make_reco_with_notes(
+            med_key: str, intent: RecommendationIntent,
+            extra_messages: Optional[List[str]] = None,
+            extra_rationale: Optional[List[str]] = None,
+            **kwargs,
+        ) -> MedicationRecommendation:
+            msgs = list(extra_messages or [])
+            msgs.extend(_selection_notes(med_key))
+            return _make_reco(
+                p, med_key, intent=intent, active_paths=pathways,
+                additional_messages=msgs,
+                rationale=extra_rationale,
+                **kwargs,
+            )
 
-            def add(m: str) -> None:
-                if m not in seen:
-                    merged.append(m)
-                    seen.add(m)
-
-            # Pain path anchors first (SNRI-first mandate)
-            if "pain" in pathways:
-                for m in PATH_RULES["pain"]["preferred"]:
-                    add(m)
-
-            # Insomnia path: mirtazapine only when obesity path is NOT also active
-            # (insomnia + obesity conflict → obesity exclusion wins, noted in rationale)
-            if "insomnia" in pathways and "obesity" not in pathways:
-                for m in PATH_RULES["insomnia"]["preferred"]:
-                    add(m)
-
-            # All remaining active paths contribute their preferred lists
-            for path in pathways:
-                if path in {"pain", "insomnia", "renal", "adult"}:
-                    continue   # pain/insomnia handled above; renal/adult have no preferred list
-                for m in PATH_RULES.get(path, {}).get("preferred", []):
-                    add(m)
-
-            # Standard adult pool as fallback (escitalopram first per spec [19, 20, 26])
-            for m in ["escitalopram", "sertraline", "fluoxetine", "citalopram", "paroxetine"]:
-                add(m)
-
-            return merged
-
-        def second_line_pool() -> List[str]:
-            if "antepartum" in pathways or "postpartum" in pathways:
-                return ["sertraline", "escitalopram", "fluoxetine"]
-            base = first_line_pool()
-            seen_base = set(base)
-            snris = [m for m in ["venlafaxine_xr", "duloxetine", "desvenlafaxine", "levomilnacipran_er"]
-                     if m not in seen_base]
-            return base + snris
-
-        def third_line_pool() -> List[str]:
-            return [
-                "venlafaxine_xr", "duloxetine", "desvenlafaxine", "levomilnacipran_er",
-                "bupropion_xl", "mirtazapine", "vortioxetine", "vilazodone",
-            ]
-
-        def pick_two(pool: List[str]) -> List[str]:
-            picked: List[str] = []
-            for m in pool:
-                if can_recommend(m) and m not in picked:
-                    picked.append(m)
-                if len(picked) == 2:
-                    break
-            return picked
-
-        # --------------------------------------------------------
-        # Follow-up logic
-        # --------------------------------------------------------
+        # ── Follow-up logic (response routing) ─────────────────────────────────
         if resp_cat in {"partial", "no_response", "remission_or_response"} and current_med in MED_KB:
             if resp_cat == "remission_or_response":
                 cap = max_cap_for_context(p, current_med, pathways)
@@ -1936,67 +2047,22 @@ class TreatmentSelectionStage(Stage):
 
             if resp_cat == "partial":
                 cap = max_cap_for_context(p, current_med, pathways)
-
                 if trial_n >= 2:
-                    # ── Trial 2/3 partial response: AUGMENTATION ONLY ──
-                    # Mutually exclusive with switch path — never show primary med list
                     continue_reco = _make_reco(
                         p, current_med, intent="continue", active_paths=pathways,
                         additional_messages=["Partial response: continue current medication and augment."],
                         rationale=[
-                            "Partial response at Trial "
-                            f"{trial_n} → augmentation pathway "
+                            f"Partial response at Trial {trial_n} → augmentation pathway "
                             "[36, 37, 38, 39, 40, 47, 48, 25, 45, 41]."
                         ],
-                        evidence=[
-                            EvidenceItem(variable="Trial number", value=str(trial_n), fhir_source="Derived"),
-                        ],
+                        evidence=[EvidenceItem(variable="Trial number", value=str(trial_n), fhir_source="Derived")],
                         cap_override=cap,
                     )
-
-                    if trial_n == 3:
-                        out.non_med_recommendations.append(
-                            "Step 6b — Psychiatric consultation advisable: third-trial partial "
-                            "response exceeds routine primary care management [53, 55]."
-                        )
-                        out.non_med_recommendations.append(
-                            "Reassess before escalating: diagnostic accuracy, medication adherence, "
-                            "comorbidities contributing to treatment resistance [45, 53, 54]."
-                        )
-                        out.non_med_recommendations.append(
-                            "Advanced interventions to discuss with psychiatry: electroconvulsive "
-                            "therapy (ECT), transcranial magnetic stimulation (TMS), ketamine, "
-                            "esketamine [45, 53, 54]."
-                        )
-                        out.warnings.append(
-                            "STAR*D note: 67% cumulative remission across four treatment levels; "
-                            "no definitive evidence base for partial response management after "
-                            "multiple trials [25]."
-                        )
-                        out.rationale.append(
-                            "Step 6b: trial 3 partial response — psychiatric consultation advisable; "
-                            "advanced interventions flagged [25, 45, 53, 54, 55]."
-                        )
-                        out.audit_trail.append("branch:step_6b_trial3_partial")
-                    else:
-                        out.non_med_recommendations.append(
-                            "Reassess before escalating: diagnostic accuracy, medication adherence, "
-                            "comorbidities contributing to treatment resistance [45, 53, 54]."
-                        )
-                        out.rationale.append(
-                            "Step 6a: trial 2 partial response — augmentation recommended [45, 53, 54]."
-                        )
-                        out.audit_trail.append("branch:step_6a_partial_augment")
-
-                    aug_recs = build_augmentation_recs(
-                        p, current_med, pathways, can_recommend, state
-                    )
+                    aug_recs = build_augmentation_recs(p, current_med, pathways, can_recommend, state)
                     out.recommendations = [continue_reco] + aug_recs
+                    out.audit_trail.append("branch:partial_augment")
                     return state
-
                 else:
-                    # ── Trial 1 partial response: NO augmentation ──
-                    # Augmentation is only available at Trial 2 or Trial 3
                     if not is_at_max_dose_for_context(p, current_med, pathways):
                         inc_msg = "Partial response: increase dose as tolerated; reassess in ~4–6 weeks."
                         if p.current_dose_mg is not None:
@@ -2008,7 +2074,7 @@ class TreatmentSelectionStage(Stage):
                         out.recommendations = [_make_reco(
                             p, current_med, intent="increase", active_paths=pathways,
                             additional_messages=[inc_msg],
-                            rationale=["Partial response at ≥6 weeks; room to increase dose in this context."],
+                            rationale=["Partial response at ≥6 weeks; room to increase dose."],
                             evidence=[
                                 EvidenceItem(variable="Weeks on med", value=str(p.weeks_on_current_antidepressant), fhir_source="Derived"),
                                 EvidenceItem(variable="Current dose (mg)", value=str(p.current_dose_mg), fhir_source="MedicationRequest"),
@@ -2018,123 +2084,221 @@ class TreatmentSelectionStage(Stage):
                         out.rationale.append("Trial 1: titrate before considering switch.")
                         out.audit_trail.append("branch:trial1_partial_increase")
                         return state
-                    else:
-                        # At max dose on Trial 1 — switch to Trial 2 (no augmentation)
-                        out.rationale.append(
-                            "Trial 1: partial response at max dose — switch to Trial 2 medication [25]."
-                        )
-                        pool = second_line_pool()
-                        picks = pick_two(pool)
-                        out.recommendations = [
-                            _make_reco(
-                                p, m, intent="switch_to", active_paths=pathways,
-                                additional_messages=[_switch_taper_message(current_med, m)],
-                                rationale=["Trial 1 partial response at max dose: advance to Trial 2 [25]."],
-                                evidence=[
-                                    EvidenceItem(variable="Trial number", value="1", fhir_source="Derived"),
-                                    EvidenceItem(variable="At max dose", value="true", fhir_source="Derived"),
-                                ],
-                                cap_override=max_cap_for_context(p, m, pathways),
-                            )
-                            for m in picks
-                        ]
-                        if not out.recommendations:
-                            out.warnings.append("No safe switch option remains; clinician review.")
-                        out.audit_trail.append("branch:trial1_partial_max_switch")
-                        return state
+                    # Fall through to class-based routing for switch
 
-            if resp_cat == "no_response":
-                if trial_n == 1:
-                    pool, why = second_line_pool(), "No response after Trial 1: switch to Trial 2."
-                elif trial_n == 2:
-                    pool, why = third_line_pool(), "No response after Trial 2: switch to Trial 3 (untried class)."
-                else:
-                    pool = third_line_pool()
-                    why = "No response after Trial 3: psychiatric consultation and advanced strategies indicated."
-                picks = pick_two(pool)
-                out.recommendations = [
-                    _make_reco(
-                        p, m, intent="switch_to", active_paths=pathways,
-                        additional_messages=[_switch_taper_message(current_med, m)],
-                        rationale=[why],
-                        evidence=[
-                            EvidenceItem(variable="Trial number", value=str(trial_n), fhir_source="Derived"),
-                            EvidenceItem(variable="Response", value="no_response", fhir_source="Derived"),
-                        ],
-                        cap_override=max_cap_for_context(p, m, pathways),
-                    )
-                    for m in picks
-                ]
-                if not out.recommendations:
-                    out.warnings.append("No safe switch option remains; clinician review.")
-                out.rationale.append(why)
-                return state
+            # no_response or partial-at-max on Trial 1 — fall through to class routing
 
-        # --------------------------------------------------------
-        # New start
-        # --------------------------------------------------------
-        if p.phq_current < 10:
+        # ── PHQ < 10 guard ─────────────────────────────────────────────────────
+        if p.phq_current < 10 and not (resp_cat in {"partial", "no_response"} and current_med):
             out.non_med_recommendations.append("PHQ < 10 without follow-up context: no medication recommended.")
             out.rationale.append("PHQ < 10, no valid follow-up context.")
             return state
 
-        if trial_n == 1:
-            pool, why = first_line_pool(), "Trial 1: first-line selection per all active path(s)."
-        elif trial_n == 2:
-            pool, why = second_line_pool(), "Trial 2: alternate antidepressant per history/tolerability."
-        else:
-            pool, why = third_line_pool(), "Trial 3: untried medication class preferred."
+        # ================================================================
+        # CLASS-BASED ROUTING (Rules 1–5)
+        # ================================================================
+        ssri_tried = "SSRI" in classes_tried
+        snri_tried = "SNRI" in classes_tried
+        ndri_tried = "NDRI" in classes_tried
+        nassa_tried = "NaSSA" in classes_tried
+        tca_tried = "TCA" in classes_tried
 
-        picks = pick_two(pool)
-        # Fallback if fewer than 2
-        if len(picks) < 2:
-            picks_set = set(picks)
-            for m in MED_KB:
-                if len(picks) >= 2:
-                    break
-                if m not in picks_set and can_recommend(m):
-                    picks.append(m)
-
-        out.recommendations = [
-            _make_reco(
-                p, m, intent="start", active_paths=pathways,
-                additional_messages=["Initiate; titrate every 1–2 weeks; reassess at 6 weeks for response. [3, 4]"],
-                rationale=[why],
-                evidence=[
-                    EvidenceItem(variable="Trial number", value=str(trial_n), fhir_source="Derived"),
-                    EvidenceItem(variable="PHQ-9 current", value=str(p.phq_current), fhir_source="Observation"),
-                    EvidenceItem(variable="Active paths", value=str(pathways), fhir_source="Derived"),
-                ],
-                cap_override=max_cap_for_context(p, m, pathways),
+        # ── RULE 5: Advanced Interventions ─────────────────────────────────────
+        rule5 = (
+            tca_tried
+            or (p.phq_current >= 20 and p.suicidality != "none")
+            or p.psychosis_positive
+        )
+        if rule5:
+            out.audit_trail.append("route:rule5_advanced")
+            out.non_med_recommendations.append(
+                "MANDATORY PSYCHIATRIC REFERRAL — This patient requires advanced "
+                "interventions that cannot be managed in primary care. "
+                "Initiate urgent psychiatric referral."
             )
-            for m in picks[:2]
-        ]
+            out.warnings.append(
+                "Mandatory psychiatric referral — advanced interventions required."
+            )
+            out.non_med_recommendations.extend([
+                "ECT: Most effective for severe, psychotic, or catatonic depression. "
+                "Preferred in older adults. Requires hospital or ECT suite. [110, 111]",
+                "TMS: FDA-approved for TRD. Non-invasive. Accelerated theta-burst "
+                "protocols also effective. Requires TMS clinic. [110]",
+                "IV Ketamine: Off-label for TRD. Noninferior to ECT (55% vs 41% response "
+                "rate) with less memory impairment. Requires monitored infusion setting. [110]",
+                "Esketamine (Spravato): FDA-approved for TRD (2+ failed trials) and MDD "
+                "with acute suicidal ideation. Requires REMS-certified treatment center. [110, 111]",
+            ])
+            out.rationale.append(
+                f"{trial_label}: advanced interventions required [110, 111]."
+            )
+            return state
+
+        # ── RULE 4: Hard Psychiatric Consultation (SSRI+SNRI+bup/mirt) ─────────
+        if ssri_tried and snri_tried and (ndri_tried or nassa_tried):
+            out.audit_trail.append("route:rule4_hard_consult")
+            # Hard consultation block FIRST
+            out.warnings.append(
+                "Psychiatric Consultation Required — This patient has failed adequate "
+                "trials across 3 antidepressant classes. Tricyclic antidepressants (TCAs) "
+                "are the next medication option but must not be initiated without "
+                "psychiatric input. [108, 109]"
+            )
+            out.non_med_recommendations.extend([
+                "PCP actions while awaiting consultation:",
+                "Continue current antidepressant at current dose [105]",
+                "Optimize psychotherapy — face-to-face referral required at this severity [99, 100]",
+                "Reassess diagnosis — rule out bipolar disorder, substance use, "
+                "medical contributors [104]",
+                "Confirm adherence — approximately 46% of apparent TRD is "
+                "pseudo-resistance due to non-adherence [104]",
+                "Monitor PHQ-9 and suicidality at every visit [105]",
+                "Consider adjunctive options within PCP scope: omega-3s, exercise [64, 65]",
+                "Do not initiate TCAs until psychiatric input is obtained. [108, 109]",
+                "If consultation wait exceeds 4-6 weeks, consider collaborative "
+                "care model where psychiatrist provides indirect supervision. [105]",
+            ])
+            # TCA options below, clearly labeled pending psychiatric input
+            for tca_key in ["nortriptyline", "desipramine"]:
+                if can_recommend(tca_key):
+                    out.recommendations.append(_make_reco_with_notes(
+                        tca_key, intent="start",
+                        extra_messages=[
+                            "Pending psychiatric consultation — do not initiate "
+                            "without psychiatric input [108, 109]",
+                        ],
+                        extra_rationale=[
+                            f"{trial_label}: TCA option pending psychiatric input [108, 109]."
+                        ],
+                        evidence=[
+                            EvidenceItem(variable="Classes failed", value=str(sorted(classes_tried)), fhir_source="Derived"),
+                        ],
+                    ))
+            out.rationale.append(
+                f"{trial_label}: hard psychiatric consultation required [108, 109]."
+            )
+            return state
+
+        # ── RULE 3: TRD Step 2 (SSRI+SNRI tried, bup/mirt not tried) ──────────
+        if ssri_tried and snri_tried and not ndri_tried and not nassa_tried:
+            out.audit_trail.append("route:rule3_trd_step2")
+            # Soft TRD safety flag
+            out.warnings.append(
+                "Treatment-Resistant Depression — patient has failed adequate trials "
+                "of 2 antidepressant classes (SSRI and SNRI). "
+                "Consider psychiatric consultation. [104, 105]"
+            )
+            # Bupropion
+            if can_recommend("bupropion_xl"):
+                bup_msgs = [
+                    "Preferred if hypersomnia, fatigue, weight gain, sexual dysfunction, "
+                    "or prominent anergia [106, 28]",
+                ]
+                out.recommendations.append(_make_reco_with_notes(
+                    "bupropion_xl", intent="start",
+                    extra_messages=bup_msgs,
+                    extra_rationale=[f"{trial_label}: bupropion — NDRI class [106, 28]."],
+                    evidence=[
+                        EvidenceItem(variable="Classes failed", value="SSRI, SNRI", fhir_source="Derived"),
+                    ],
+                ))
+            # Mirtazapine
+            if can_recommend("mirtazapine"):
+                mirt_msgs = [
+                    "Preferred if insomnia, decreased appetite, weight loss, "
+                    "or anxiety [107, 28]",
+                ]
+                out.recommendations.append(_make_reco_with_notes(
+                    "mirtazapine", intent="start",
+                    extra_messages=mirt_msgs,
+                    extra_rationale=[f"{trial_label}: mirtazapine — NaSSA class [107, 28]."],
+                    evidence=[
+                        EvidenceItem(variable="Classes failed", value="SSRI, SNRI", fhir_source="Derived"),
+                    ],
+                ))
+            # Soft consultation block AFTER medications
+            out.non_med_recommendations.append(
+                "Psychiatric Consultation — Recommended: This patient meets criteria "
+                "for treatment-resistant depression. Consider referral to psychiatry "
+                "for co-management. Primary care may continue managing while "
+                "consultation is arranged. [104, 105]"
+            )
+            # Switching protocol fires based on current med
+            out.rationale.append(
+                f"{trial_label}: SSRI and SNRI classes failed — bupropion and "
+                "mirtazapine recommended [102, 103, 106, 107]."
+            )
+            return state
+
+        # ── RULE 2: SSRI tried, SNRI not tried ────────────────────────────────
+        if ssri_tried and not snri_tried:
+            out.audit_trail.append("route:rule2_snri_switch")
+            # Venlafaxine XR
+            if can_recommend("venlafaxine_xr"):
+                out.recommendations.append(_make_reco_with_notes(
+                    "venlafaxine_xr", intent="switch_to",
+                    extra_messages=[
+                        _switch_taper_message(current_med, "venlafaxine_xr") if current_med else "",
+                        "First SNRI option after SSRI failure — adds norepinephrine mechanism [102, 103, 105]",
+                    ],
+                    extra_rationale=["Trial 2: SNRI switch after SSRI failure [102, 103]."],
+                    evidence=[
+                        EvidenceItem(variable="Classes failed", value="SSRI", fhir_source="Derived"),
+                    ],
+                ))
+            # Duloxetine
+            if can_recommend("duloxetine"):
+                out.recommendations.append(_make_reco_with_notes(
+                    "duloxetine", intent="switch_to",
+                    extra_messages=[
+                        _switch_taper_message(current_med, "duloxetine") if current_med else "",
+                        "Alternative SNRI — preferred if comorbid chronic pain [102, 103]",
+                    ],
+                    extra_rationale=["Trial 2: SNRI switch after SSRI failure [102, 103]."],
+                    evidence=[
+                        EvidenceItem(variable="Classes failed", value="SSRI", fhir_source="Derived"),
+                    ],
+                ))
+            out.rationale.append(
+                "Trial 2: SSRI class trialed — switching to SNRI class [102, 103]."
+            )
+            return state
+
+        # ── RULE 1: No prior trials ───────────────────────────────────────────
+        out.audit_trail.append("route:rule1_first_line")
+        # Standard first-line set: escitalopram, sertraline, bupropion
+        first_line = ["escitalopram", "sertraline", "bupropion_xl"]
+        # Add comorbidity-driven options
+        if p.insomnia and can_recommend("mirtazapine"):
+            first_line.append("mirtazapine")
+        if (p.fibromyalgia or p.chronic_pain) and can_recommend("duloxetine"):
+            first_line.append("duloxetine")
+        if p.cardiac_history:
+            # Move sertraline to front
+            if "sertraline" in first_line:
+                first_line.remove("sertraline")
+                first_line.insert(0, "sertraline")
+
+        for m in first_line:
+            if can_recommend(m):
+                out.recommendations.append(_make_reco_with_notes(
+                    m, intent="start",
+                    extra_messages=[
+                        "Initiate; titrate every 1–2 weeks; reassess at 6 weeks for response. [3, 4]"
+                    ],
+                    extra_rationale=["Trial 1: first-line selection [19, 20, 26]."],
+                    evidence=[
+                        EvidenceItem(variable="PHQ-9 current", value=str(p.phq_current), fhir_source="Observation"),
+                        EvidenceItem(variable="Active paths", value=str(pathways), fhir_source="Derived"),
+                    ],
+                    cap_override=max_cap_for_context(p, m, pathways),
+                ))
+
         if not out.recommendations:
             out.warnings.append("All candidates blocked; clinician review required.")
             out.rationale.append("All options blocked or excluded by history.")
-            return state
-
-        # Surface path-adjustment rationale
-        notes: List[str] = []
-        if "geriatric" in pathways:
-            notes.append("geriatric: paroxetine/fluoxetine excluded; escitalopram capped at 10 mg, citalopram at 20 mg")
-        if "cardiac" in pathways:
-            notes.append("cardiac: sertraline/fluoxetine preferred; QTc-conditional exclusions active if QTc > 500 ms")
-        if "renal" in pathways:
-            renal_val = p.crcl_ml_min if p.crcl_ml_min is not None else p.egfr_ml_min_1_73
-            bucket = renal_bucket_from_crcl(p.crcl_ml_min, p.egfr_ml_min_1_73)
-            notes.append(f"renal (eGFR/CrCl {renal_val} → bucket {bucket}): dose caps applied per RENAL_MAX_CAPS_MG")
-        if "hepatic" in pathways:
-            notes.append("hepatic: duloxetine excluded; SSRI doses reduced")
-        if "pain" in pathways:
-            notes.append("pain: SNRIs anchored at front of pool")
-        if "insomnia" in pathways and "obesity" not in pathways:
-            notes.append("insomnia: mirtazapine included in pool")
-        if "insomnia" in pathways and "obesity" in pathways:
-            notes.append("insomnia + obesity conflict: mirtazapine excluded (obesity path wins)")
-        if notes:
-            out.rationale.append("Active path adjustments applied: " + " | ".join(notes))
-        out.rationale.append(why)
+        else:
+            out.rationale.append("Trial 1: first-line selection per all active path(s).")
         return state
 
 
