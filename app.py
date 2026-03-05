@@ -95,32 +95,22 @@ st.markdown("""
         color: #212121 !important;
     }
 
-    /* FIX 1 — Checkbox accent color (square fill) */
-    [data-testid="stCheckbox"] input[type="checkbox"] {
-        accent-color: #2EA799 !important;
-        width: 18px !important;
-        height: 18px !important;
-    }
-    [data-testid="stCheckbox"] label,
-    .stCheckbox label {
-        color: #212121 !important;
-    }
-
-    /* Number input buttons */
+    /* Number input +/- buttons */
     [data-testid="stNumberInput"] button {
         background-color: #FFFFFF !important;
         color: #212121 !important;
         border-color: #BDBDBD !important;
     }
 
-    /* FIX 2 — All buttons: white text on navy, hover to teal */
-    .stButton > button {
+    /* Generate Report — primary button */
+    [data-testid="baseButton-primary"] {
         background-color: #161BAA !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         border: none !important;
+        font-size: 1.1em !important;
     }
-    .stButton > button:hover {
+    [data-testid="baseButton-primary"]:hover {
         background-color: #2EA799 !important;
         color: #FFFFFF !important;
     }
@@ -179,23 +169,10 @@ NF = {
 # ── Global CSS injection ───────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
-/* ── Primary button (Generate Report) ── */
-.stButton > button[kind="primary"],
-.stButton > button[data-testid="baseButton-primary"] {{
-    background-color: {NF['navy']} !important;
-    color: {NF['white']} !important;
-    border: none !important;
-    font-weight: 600 !important;
-}}
-.stButton > button[kind="primary"]:hover,
-.stButton > button[data-testid="baseButton-primary"]:hover {{
-    background-color: #0f1077 !important;
-    color: {NF['white']} !important;
-}}
-
 /* ── Input labels ── */
 .stNumberInput label, .stSelectbox label, .stTextArea label,
-.stSlider label, .stCheckbox label, .stRadio label {{
+.stSlider label, .stCheckbox label, .stRadio label,
+.stToggle label, [data-testid="stToggle"] label {{
     color: {NF['text_pri']} !important;
     font-weight: 500 !important;
 }}
@@ -218,8 +195,9 @@ hr {{
     font-weight: 600 !important;
 }}
 
-/* ── Checkbox label text ── */
-.stCheckbox span {{
+/* ── Toggle / checkbox label text ── */
+.stCheckbox span, .stToggle span,
+[data-testid="stToggle"] span {{
     color: {NF['text_pri']} !important;
 }}
 </style>
@@ -383,7 +361,7 @@ with col_left:
     # ── Section 2: Follow-up (toggle) ────────────────────────────────────────
     _section_header("2 · Follow-up Visit")
 
-    is_followup = st.checkbox("This is a follow-up visit", value=False)
+    is_followup = st.toggle("This is a follow-up visit")
 
     baseline_phq           = None
     weeks_on_current       = None
@@ -516,17 +494,17 @@ with col_left:
 
     mh_col1, mh_col2 = st.columns(2)
     with mh_col1:
-        cardiac_history    = st.checkbox("Cardiac history")
-        hepatic_impairment = st.checkbox("Hepatic impairment")
-        renal_impairment   = st.checkbox("Renal impairment")
-        dementia           = st.checkbox("Dementia")
-        pregnant           = st.checkbox("Pregnant")
+        cardiac_history    = st.toggle("Cardiac history")
+        hepatic_impairment = st.toggle("Hepatic impairment")
+        renal_impairment   = st.toggle("Renal impairment")
+        dementia           = st.toggle("Dementia")
+        pregnant           = st.toggle("Pregnant")
     with mh_col2:
-        insomnia                   = st.checkbox("Insomnia")
-        obesity                    = st.checkbox("Obesity (BMI ≥ 30)")
-        anxiety_comorbidity        = st.checkbox("Anxiety")
-        fatigue_anhedonia          = st.checkbox("Fatigue / anhedonia")
-        sexual_dysfunction_concern = st.checkbox("Sexual dysfunction concern")
+        insomnia                   = st.toggle("Insomnia")
+        obesity                    = st.toggle("Obesity (BMI ≥ 30)")
+        anxiety_comorbidity        = st.toggle("Anxiety")
+        fatigue_anhedonia          = st.toggle("Fatigue / anhedonia")
+        sexual_dysfunction_concern = st.toggle("Sexual dysfunction concern")
 
     egfr            = None
     qtc_ms          = None
@@ -562,13 +540,13 @@ with col_left:
     _divider()
 
     # ── Generate Report button ────────────────────────────────────────────────
-    generate = st.button("Generate Report", type="primary", use_container_width=True)
+    generate_clicked = st.button("Generate Report", type="primary", use_container_width=True)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Build PatientInput dict and run algorithm on button click
 # ═════════════════════════════════════════════════════════════════════════════
-if generate:
+if generate_clicked:
     current_meds_list = []
     if current_meds_raw.strip():
         for entry in current_meds_raw.replace("\n", ",").split(","):
