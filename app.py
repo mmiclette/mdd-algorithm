@@ -24,9 +24,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Meta color-scheme hint — must be first st. call after set_page_config
+st.markdown('<meta name="color-scheme" content="light">', unsafe_allow_html=True)
+
 # ── Force light mode — comprehensive widget overrides ─────────────────────────
 st.markdown("""
 <style>
+    /* Document root */
+    html {
+        color-scheme: light !important;
+        background-color: #FFFFFF !important;
+    }
+    body {
+        background-color: #FFFFFF !important;
+        color: #212121 !important;
+    }
+
     /* Main background */
     .stApp, [data-testid="stAppViewContainer"],
     [data-testid="stMain"] {
@@ -45,6 +58,20 @@ st.markdown("""
         background-color: #FFFFFF !important;
         color: #212121 !important;
         border-color: #BDBDBD !important;
+    }
+
+    /* FIX 4 — deeper select/number input containers */
+    [data-baseweb="select"] > div,
+    [data-baseweb="select"] input,
+    [data-baseweb="popover"] > div,
+    [data-testid="stSelectbox"] > div > div {
+        background-color: #FFFFFF !important;
+        color: #212121 !important;
+        border-color: #BDBDBD !important;
+    }
+    [data-testid="stNumberInput"] > div > div {
+        background-color: #FFFFFF !important;
+        color: #212121 !important;
     }
 
     /* Dropdown menus */
@@ -68,7 +95,12 @@ st.markdown("""
         color: #212121 !important;
     }
 
-    /* Checkboxes */
+    /* FIX 1 — Checkbox accent color (square fill) */
+    [data-testid="stCheckbox"] input[type="checkbox"] {
+        accent-color: #2EA799 !important;
+        width: 18px !important;
+        height: 18px !important;
+    }
     [data-testid="stCheckbox"] label,
     .stCheckbox label {
         color: #212121 !important;
@@ -79,6 +111,18 @@ st.markdown("""
         background-color: #FFFFFF !important;
         color: #212121 !important;
         border-color: #BDBDBD !important;
+    }
+
+    /* FIX 2 — All buttons: white text on navy, hover to teal */
+    .stButton > button {
+        background-color: #161BAA !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        border: none !important;
+    }
+    .stButton > button:hover {
+        background-color: #2EA799 !important;
+        color: #FFFFFF !important;
     }
 
     /* Labels */
@@ -707,20 +751,23 @@ with col_right:
             )
             for i, med in enumerate(meds_recs, 1):
                 notes_html = "".join(
-                    f'<div style="color:{NF["text_sec"]};font-size:0.85rem;">'
+                    f'<div style="color:#757575;font-size:0.9em;">'
                     f'→ {_e(n)}</div>'
                     for n in med.get("notes", [])
                 )
                 dose_html = (
-                    f'<div style="color:{NF["text_sec"]};font-size:0.85rem;'
+                    f'<div style="color:#757575;font-size:0.9em;'
                     f'margin-top:0.1rem;">Dose: {_e(med["dose"])}</div>'
                     if med.get("dose") else ""
                 )
                 body_parts.append(
-                    f'<div style="border:1px solid {NF["divider"]};border-radius:6px;'
-                    f'padding:0.6rem 0.8rem;margin-bottom:0.4rem;background:#fafafa;">'
-                    f'<strong style="color:{NF["text_pri"]};">{i}. {_e(med["medication"])}</strong>'
-                    f' <code style="font-size:0.75rem;color:{NF["text_sec"]};">{_e(med["intent"])}</code>'
+                    f'<div style="background-color:#F5F5F5;color:#212121;'
+                    f'border:1px solid #BDBDBD;border-radius:8px;'
+                    f'padding:12px;margin-bottom:0.4rem;">'
+                    f'<strong style="color:#212121;">{i}. {_e(med["medication"])}</strong>'
+                    f' <span style="background-color:#E8EAF6;color:#161BAA;'
+                    f'border:1px solid #BDBDBD;border-radius:4px;'
+                    f'padding:2px 6px;font-size:0.75em;">{_e(med["intent"])}</span>'
                     f'{dose_html}{notes_html}</div>'
                 )
 
@@ -733,11 +780,11 @@ with col_right:
                 f'margin:0.6rem 0 0.4rem;font-size:0.85rem;">THERAPY</div>'
             )
             body_parts.append(
-                f'<div style="border:1px solid {NF["divider"]};border-radius:6px;'
-                f'padding:0.6rem 0.8rem;background:#fafafa;">'
+                f'<div style="background-color:#F5F5F5;color:#212121;'
+                f'border:1px solid #BDBDBD;border-radius:8px;padding:12px;">'
                 f'<strong style="color:{NF["navy"]};">{_e(level)}</strong><br>'
-                f'<span style="color:{NF["text_pri"]};font-size:0.9rem;">{_e(rec_t)}</span><br>'
-                f'<span style="color:{NF["text_sec"]};font-size:0.82rem;">Format: {_e(fmt)}</span>'
+                f'<span style="color:#212121;font-size:0.9em;">{_e(rec_t)}</span><br>'
+                f'<span style="color:#757575;font-size:0.82rem;">Format: {_e(fmt)}</span>'
                 f'</div>'
             )
 
