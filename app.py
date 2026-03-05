@@ -18,11 +18,32 @@ from algorithm import run_algorithm, MED_KB
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="MDD Algorithm",
+    page_title="MDD Treatment Algorithm",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# ── Force light mode ───────────────────────────────────────────────────────────
+st.markdown("""
+    <style>
+        /* Force light mode */
+        [data-testid="stAppViewContainer"] {
+            background-color: #FFFFFF;
+            color: #212121;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #FFFFFF;
+        }
+        .stApp {
+            background-color: #FFFFFF;
+        }
+        /* Override dark mode preference */
+        :root {
+            color-scheme: light;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # ── NeuroFlow palette ─────────────────────────────────────────────────────────
 NF = {
