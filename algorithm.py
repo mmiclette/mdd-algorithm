@@ -1913,8 +1913,9 @@ def _format_switch_protocol_lines(
         f"Prior: {prior_disp} ({prior_cls}){dose_str}",
         f"New: {new_disp} ({new_cls}) | Start: {new_start}",
         f"Method: {method_str}",
-        f"Estimated duration: {proto.duration}",
     ]
+    if proto.duration and "n/a" not in proto.duration.lower():
+        lines.append(f"Estimated duration: {proto.duration}")
 
     # Taper schedule (omit for direct switch and fluoxetine outgoing)
     if proto.taper_steps:
@@ -1951,9 +1952,10 @@ def _switch_taper_message(
     proto = get_switching_protocol(outgoing_key, incoming_key, current_dose_mg)
     method_str = METHOD_DISPLAY.get(proto.method, proto.method)
     ref_str = ", ".join(f"[{c}]" for c in proto.citations)
+    dur_part = f" ({proto.duration})" if proto.duration and "n/a" not in proto.duration.lower() else ""
     if proto.warning:
-        return f"{method_str} ({proto.duration}): {proto.warning} {ref_str}"
-    return f"{method_str} ({proto.duration}). {ref_str}"
+        return f"{method_str}{dur_part}: {proto.warning} {ref_str}"
+    return f"{method_str}{dur_part}. {ref_str}"
 
 
 
@@ -3190,7 +3192,11 @@ def _format_text_report(report: dict) -> str:
             if entry.get("new"):
                 lines.append(f"  New:   {entry['new']}")
             if entry.get("method"):
-                lines.append(f"  Method: {entry['method']}  |  Duration: {entry.get('duration', 'N/A')}")
+                _dur = entry.get("duration", "")
+                if _dur and "n/a" not in _dur.lower():
+                    lines.append(f"  Method: {entry['method']}  |  Duration: {_dur}")
+                else:
+                    lines.append(f"  Method: {entry['method']}")
             if entry.get("warning"):
                 lines.append(f"  \u26a0  {entry['warning']}")
             for f in entry.get("safety_flags", []):

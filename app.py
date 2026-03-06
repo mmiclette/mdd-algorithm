@@ -817,10 +817,11 @@ with col_right:
                     f'</div>'
                 )
             if entry.get("method"):
-                inner += (
-                    f'<div><strong>Method:</strong> {_e(entry["method"])}'
-                    f' &nbsp;·&nbsp; <strong>Estimated duration:</strong> {_e(entry.get("duration","N/A"))}</div>'
-                )
+                _method_str = _e(entry["method"])
+                _dur = entry.get("duration", "")
+                if _dur and "n/a" not in _dur.lower():
+                    _method_str += f' &nbsp;·&nbsp; <strong>Estimated duration:</strong> {_e(_dur)}'
+                inner += f'<div><strong>Method:</strong> {_method_str}</div>'
             # Taper steps
             taper_steps = entry.get("taper_steps", [])
             if taper_steps:
