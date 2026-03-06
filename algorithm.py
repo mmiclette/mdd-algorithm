@@ -1493,6 +1493,7 @@ METHOD_DISPLAY: Dict[str, str] = {
     "standard_step_taper": "Standard step taper",
     "washout":             "Washout — do not overlap",
     "cross_taper":         "Cross-taper",     # legacy fallback
+    "dose_optimization":   "Dose optimization — no switch required",
 }
 
 def classify_med_for_switch(med_key: Optional[str]) -> str:
@@ -1592,7 +1593,38 @@ def get_switching_protocol(
     nc = classify_med_for_switch(new_key)
     dose = float(current_dose_mg) if current_dose_mg else 0.0
     prior_disp = MED_KB.get(prior_key or "", {}).get("display", prior_key or "unknown")
+    new_disp = MED_KB.get(new_key or "", {}).get("display", new_key or "unknown")
     new_start = _new_med_start_dose(new_key)
+
+    # ── EDGE: Unknown current medication ──────────────────────────────────
+    if pc == "unknown" or pc == "other":
+        return SwitchProtocol(
+            method="cross_taper",
+            duration="1-2 weeks",
+            warning="",
+            citations=["28", "87"],
+            new_med_timing=f"Start new medication at low dose ({new_start}) on day 1.",
+            clinical_note=(
+                "Switching protocol requires current medication — enter current "
+                "antidepressant in follow-up section for a medication-specific protocol."
+            ),
+        )
+
+    # ── EDGE: Same medication (dose optimization, not a switch) ──────────
+    pk = (prior_key or "").strip().lower()
+    nk = (new_key or "").strip().lower()
+    if pk and nk and pk == nk:
+        return SwitchProtocol(
+            method="dose_optimization",
+            duration="N/A — not a switch",
+            warning="",
+            citations=[],
+            new_med_timing="",
+            clinical_note=(
+                f"Current and recommended medication are both {prior_disp}. "
+                "This is a dose optimization, not a switch — no switching protocol required."
+            ),
+        )
 
     # ── RULE E: fluoxetine → MAOI (5-week washout) ────────────────────────
     if pc == "fluoxetine" and nc == "maoi":
@@ -1628,7 +1660,7 @@ def get_switching_protocol(
             new_med_timing=f"Do not start MAOI until {dur} after last dose.",
         )
 
-    # ── RULE C: Paroxetine → any class (full calculated cross-taper) ─────
+    # ── RULE C: Paroxetine → any class (full calculated taper) ───────────
     if pc == "paroxetine":
         step_size = 10.0
         freq = "every 3-7 days"
@@ -1638,7 +1670,13 @@ def get_switching_protocol(
             hyp_note = (
                 "Current dose >20mg: consider hyperbolic taper approach — "
                 "linear dose reductions cause exponential increases in serotonin "
-                "transporter availability at receptors. [88, 95]"
+                "transporter availability at receptors. [88, 95] "
+            )
+        if nc == "tca":
+            hyp_note += (
+                "TCA narrow therapeutic index — start TCA at lowest dose, monitor "
+                "serum levels, and do not advance TCA until paroxetine taper is "
+                "complete. CYP2D6 inhibition by paroxetine increases TCA levels. [28, 89]"
             )
         return SwitchProtocol(
             method="full_cross_taper",
@@ -1657,8 +1695,19 @@ def get_switching_protocol(
             clinical_note=hyp_note,
         )
 
-    # ── RULE D: Fluoxetine → any non-MAOI (direct switch) ────────────────
+    # ── RULE D: Fluoxetine → any non-MAOI (direct switch, built-in taper) ─
     if pc == "fluoxetine":
+        note = (
+            "Fluoxetine's long half-life makes direct switch safe for most "
+            "destinations. Norfluoxetine active metabolite half-life 4-16 days "
+            "provides built-in taper. [87, 28]"
+        )
+        if nc == "tca":
+            note += (
+                " TCA narrow therapeutic index — start TCA at lowest dose and "
+                "monitor serum levels. CYP2D6 inhibition by fluoxetine may persist "
+                "for weeks after stopping. [28, 89]"
+            )
         return SwitchProtocol(
             method="direct_switch",
             duration="N/A — no taper required",
@@ -1668,15 +1717,11 @@ def get_switching_protocol(
                 f"Start new medication at standard initiation dose ({new_start}) on day 1. "
                 "No taper schedule needed."
             ),
-            clinical_note=(
-                "Fluoxetine's long half-life makes direct switch safe for most "
-                "destinations. Norfluoxetine active metabolite half-life 4-16 days "
-                "provides built-in taper. [87, 28]"
-            ),
+            clinical_note=note,
         )
 
     # ── RULE F-REVERSE: SNRI → SSRI (direct switch with NE withdrawal warning) ─
-    if (pc in ("venlafaxine", "duloxetine", "snri_other")) and _cls_is_ssri(nc):
+    if _cls_is_snri(pc) and _cls_is_ssri(nc):
         return SwitchProtocol(
             method="direct_switch",
             duration="N/A — direct switch",
@@ -1687,7 +1732,7 @@ def get_switching_protocol(
             ),
             citations=["87", "28", "93"],
             new_med_timing=(
-                f"Stop prior SNRI, start {MED_KB.get(new_key or '', {}).get('display', 'new SSRI')} "
+                f"Stop prior SNRI, start {new_disp} "
                 f"at standard starting dose ({new_start}) the next day."
             ),
             clinical_note=(
@@ -1698,21 +1743,49 @@ def get_switching_protocol(
             ),
         )
 
+    # ── SNRI → SNRI (unexpected combination — flag + direct switch) ──────
+    if _cls_is_snri(pc) and _cls_is_snri(nc):
+        return SwitchProtocol(
+            method="direct_switch",
+            duration="N/A — direct switch",
+            warning=(
+                "Norepinephrine withdrawal symptoms may occur during transition — "
+                "monitor for dizziness, paresthesia, and irritability "
+                "in the first 1-2 weeks. [93, 113]"
+            ),
+            citations=["87", "28", "93"],
+            new_med_timing=(
+                f"Stop prior SNRI, start {new_disp} "
+                f"at standard starting dose ({new_start}) the next day."
+            ),
+            clinical_note=(
+                "Note: switching between two SNRIs — verify this is intentional. "
+                "If inadequate response to first SNRI, consider a different class. "
+                "If patient has history of withdrawal sensitivity, abbreviated overlap "
+                "over 3-7 days may reduce discontinuation symptoms. [87, 28]"
+            ),
+        )
+
     # ── RULE F: Venlafaxine → any class (full calculated slow taper) ─────
     if pc == "venlafaxine":
         step_size = 37.5
         freq = "every 1-2 weeks"
         steps, total_dur = _calc_taper_steps(dose, step_size, freq, prior_disp) if dose > 0 else ([], "calculate from current dose")
         ext_note = ""
-        # Parse total weeks from duration
         if steps:
             n = len(steps)
             high_wk = n * 2
             if high_wk > 8:
                 ext_note = (
                     "Extended taper (>8 weeks) — consider psychiatry involvement "
-                    "for monitoring."
+                    "for monitoring. "
                 )
+        if nc == "tca":
+            ext_note += (
+                "TCA narrow therapeutic index — start TCA at lowest dose and "
+                "monitor serum levels. Do not advance TCA dose until venlafaxine "
+                "taper is complete. [28, 89]"
+            )
         return SwitchProtocol(
             method="slow_taper",
             duration=total_dur,
@@ -1743,8 +1816,14 @@ def get_switching_protocol(
             if high_wk > 8:
                 ext_note = (
                     "Extended taper (>8 weeks) — consider psychiatry involvement "
-                    "for monitoring."
+                    "for monitoring. "
                 )
+        if nc == "tca":
+            ext_note += (
+                "TCA narrow therapeutic index — start TCA at lowest dose and "
+                "monitor serum levels. Do not advance TCA dose until duloxetine "
+                "taper is complete. [28, 89]"
+            )
         return SwitchProtocol(
             method="slow_taper",
             duration=total_dur,
@@ -1759,6 +1838,37 @@ def get_switching_protocol(
                 f"Start new medication at lowest available dose ({new_start}) at week 2 of taper "
                 "once initial reduction is tolerated. Increase new medication to target "
                 "during final taper steps."
+            ),
+            clinical_note=ext_note,
+        )
+
+    # ── snri_other → any (slow taper with NE warning) ────────────────────
+    # Catches desvenlafaxine, levomilnacipran, etc. → bupropion/mirtazapine/TCA/other
+    # (SNRI → SSRI already handled by F-REVERSE, SNRI → SNRI above)
+    if pc == "snri_other":
+        step_size = 25.0
+        freq = "every 1-2 weeks"
+        steps, total_dur = _calc_taper_steps(dose, step_size, freq, prior_disp) if dose > 0 else ([], "calculate from current dose")
+        ext_note = ""
+        if nc == "tca":
+            ext_note = (
+                "TCA narrow therapeutic index — start TCA at lowest dose and "
+                "monitor serum levels. Do not advance TCA dose until SNRI taper "
+                "is complete. [28, 89]"
+            )
+        return SwitchProtocol(
+            method="slow_taper",
+            duration=total_dur,
+            warning=(
+                "Norepinephrine withdrawal symptoms not covered by destination medication. "
+                "Monitor for dizziness, paresthesia, and irritability. "
+                "Do not switch abruptly. [93, 94, 112]"
+            ),
+            citations=["93", "94", "112"],
+            taper_steps=steps,
+            new_med_timing=(
+                f"Start new medication at lowest available dose ({new_start}) at week 2 of taper "
+                "once initial reduction is tolerated."
             ),
             clinical_note=ext_note,
         )
@@ -1821,8 +1931,7 @@ def get_switching_protocol(
             warning="",
             citations=["87", "28"],
             new_med_timing=(
-                f"Stop {prior_disp}, start "
-                f"{MED_KB.get(new_key or '', {}).get('display', 'new SSRI')} "
+                f"Stop {prior_disp}, start {new_disp} "
                 f"at standard starting dose ({new_start}) the next day."
             ),
             clinical_note=(
@@ -1841,8 +1950,7 @@ def get_switching_protocol(
             warning="",
             citations=["87", "28", "114"],
             new_med_timing=(
-                f"Stop {prior_disp}, start "
-                f"{MED_KB.get(new_key or '', {}).get('display', 'new SNRI')} "
+                f"Stop {prior_disp}, start {new_disp} "
                 f"at standard starting dose ({new_start}) the next day."
             ),
             clinical_note=(
@@ -1853,34 +1961,38 @@ def get_switching_protocol(
             ),
         )
 
-    # ── SSRI/SNRI → TCA (cross-taper) ───────────────────────────────────
-    if _cls_is_ssri_or_snri(pc) and nc == "tca":
+    # ── RULE A variant: SSRI (not parox, not fluox) → NDRI or NaSSA ─────
+    if pc == "ssri_other" and nc in ("bupropion", "mirtazapine"):
+        return SwitchProtocol(
+            method="direct_switch",
+            duration="N/A — direct switch",
+            warning="",
+            citations=["87", "28"],
+            new_med_timing=(
+                f"Stop {prior_disp}, start {new_disp} "
+                f"at standard starting dose ({new_start}) the next day."
+            ),
+            clinical_note=(
+                "If patient has history of withdrawal sensitivity, abbreviated overlap "
+                "over 3-7 days may reduce discontinuation symptoms — reduce prior SSRI "
+                "to half dose while starting new medication at low dose, then stop "
+                "prior SSRI. Lower serotonin syndrome risk due to different mechanisms. "
+                "[87, 28]"
+            ),
+        )
+
+    # ── SSRI → TCA (cross-taper with TCA warning) ───────────────────────
+    if pc == "ssri_other" and nc == "tca":
         return SwitchProtocol(
             method="cross_taper",
             duration="1-2 weeks",
-            warning="Monitor for serotonin syndrome during overlap period.",
+            warning=(
+                "TCA narrow therapeutic index — start TCA at lowest dose and "
+                "monitor serum levels. Monitor for serotonin syndrome during "
+                "overlap period. [28, 87, 89]"
+            ),
             citations=["28", "87", "89"],
-            new_med_timing=f"Start new medication at low dose ({new_start}) on day 1.",
-        )
-
-    # ── Bupropion/mirtazapine → SSRI/SNRI (cross-taper) ─────────────────
-    if _cls_is_bup_or_mirt(pc) and _cls_is_ssri_or_snri(nc):
-        return SwitchProtocol(
-            method="cross_taper",
-            duration="1-2 weeks",
-            warning="",
-            citations=["28", "87"],
-            new_med_timing=f"Start new medication at low dose ({new_start}) on day 1.",
-        )
-
-    # ── SSRI/SNRI → bupropion or mirtazapine (cross-taper) ──────────────
-    if _cls_is_ssri_or_snri(pc) and _cls_is_bup_or_mirt(nc):
-        return SwitchProtocol(
-            method="cross_taper",
-            duration="1-2 weeks",
-            warning="",
-            citations=["28", "87"],
-            new_med_timing=f"Start new medication at low dose ({new_start}) on day 1.",
+            new_med_timing=f"Start TCA at lowest dose ({new_start}) on day 1.",
         )
 
     # ── Default: cross-taper 1–2 weeks ───────────────────────────────────
@@ -2701,6 +2813,12 @@ class OutputCompletionStage(Stage):
             for _srec in _switch_recs:
                 _new_key = _srec.medication_key
                 _proto   = get_switching_protocol(_outgoing, _new_key, p.current_dose_mg)
+                # Skip rendering if dose optimization (same med, not a switch)
+                if _proto.method == "dose_optimization":
+                    out.audit_trail.append(
+                        f"switching_protocol:dose_optimization:{_outgoing}->{_new_key}"
+                    )
+                    continue
                 _pair_key = (classify_med_for_switch(_outgoing),
                              classify_med_for_switch(_new_key))
                 if _pair_key in _seen_protocols:
@@ -2956,7 +3074,10 @@ def _build_medication_entries(p: "PatientInput", out: "AlgorithmOutput") -> List
             _sw_proto = get_switching_protocol(
                 p.current_antidepressant_key, rec.medication_key, p.current_dose_mg
             )
-            if _sw_proto.taper_steps and _sw_proto.method != "direct_switch":
+            if _sw_proto.method == "dose_optimization":
+                dose_curr = f"{p.current_dose_mg} mg" if p.current_dose_mg else "current"
+                entry["dose"] = f"Current: {dose_curr} \u2192 Target: {rec.dose_range}"
+            elif _sw_proto.taper_steps and _sw_proto.method != "direct_switch":
                 entry["dose"] = f"Dosing: Refer to Switching Protocol \u2192 Target: {rec.dose_range}"
             else:
                 entry["dose"] = f"Start: {rec.start_dose} \u2192 Target: {rec.dose_range}"
