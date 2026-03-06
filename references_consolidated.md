@@ -175,3 +175,8 @@
 109. Gaddey HL, Mason B, Naik A. Depression: Managing Resistance and Partial Response to Treatment. Am Fam Physician. 2024;109(5):410-416.
 110. Anand A et al. Ketamine versus ECT for Nonpsychotic Treatment-Resistant Major Depression. N Engl J Med. 2023;388(25):2315-2325.
 111. Marques MG et al. Next-Step Treatment Options for Treatment-Resistant Depression: Mayo Clinic Depression Center Panel. J Clin Psychiatry. 2026;87(1):25cs16066.
+
+## Antidepressant Discontinuation and Taper Evidence
+
+112. Quilichini JB et al. Comparative Effects of 15 Antidepressants on Risk of Withdrawal Syndrome: WHO Pharmacovigilance Database. J Affect Disord. 2022;297:189-193.
+113. Henssler J et al. Incidence of Antidepressant Discontinuation Symptoms: Systematic Review and Meta-Analysis. Lancet Psychiatry. 2024;11(7):526-535.

@@ -810,21 +810,49 @@ with col_right:
             inner = ""
             if entry.get("prior") or entry.get("new"):
                 inner += (
-                    f'<div style="display:flex;gap:2rem;margin-bottom:0.3rem;">'
-                    f'<span><strong>Prior:</strong> {_e(entry.get("prior",""))}</span>'
-                    f'<span><strong>New:</strong> {_e(entry.get("new",""))}</span>'
+                    f'<div style="margin-bottom:0.3rem;">'
+                    f'<div><strong>Prior:</strong> {_e(entry.get("prior",""))}</div>'
+                    f'<div><strong>New:</strong> {_e(entry.get("new",""))}</div>'
                     f'</div>'
                 )
             if entry.get("method"):
                 inner += (
                     f'<div><strong>Method:</strong> {_e(entry["method"])}'
-                    f' &nbsp;·&nbsp; <strong>Duration:</strong> {_e(entry.get("duration","N/A"))}</div>'
+                    f' &nbsp;·&nbsp; <strong>Estimated duration:</strong> {_e(entry.get("duration","N/A"))}</div>'
                 )
+            # Taper steps
+            taper_steps = entry.get("taper_steps", [])
+            if taper_steps:
+                inner += '<div style="margin-top:0.4rem;"><strong>Taper schedule:</strong></div>'
+                for step in taper_steps:
+                    inner += (
+                        f'<div style="margin-left:1rem;font-size:0.88rem;">'
+                        f'→ {_e(step)}</div>'
+                    )
+            # New med timing
+            if entry.get("new_med_timing"):
+                inner += (
+                    f'<div style="margin-top:0.3rem;"><strong>New medication initiation:</strong> '
+                    f'{_e(entry["new_med_timing"])}</div>'
+                )
+            # Clinical note
+            if entry.get("clinical_note"):
+                inner += (
+                    f'<div style="opacity:0.9;font-size:0.88rem;margin-top:0.3rem;">'
+                    f'ℹ&nbsp; {_e(entry["clinical_note"])}</div>'
+                )
+            # Warning
             if entry.get("warning"):
                 inner += (
                     f'<div style="background:rgba(0,0,0,0.12);border-radius:4px;'
                     f'padding:0.4rem 0.6rem;margin-top:0.4rem;">'
                     f'⚠&nbsp; {_e(entry["warning"])}</div>'
+                )
+            # Disclaimer
+            if entry.get("disclaimer"):
+                inner += (
+                    f'<div style="opacity:0.7;font-size:0.8rem;margin-top:0.3rem;'
+                    f'font-style:italic;">{_e(entry["disclaimer"])}</div>'
                 )
             for mn in entry.get("mnemonics", []):
                 inner += (
