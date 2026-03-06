@@ -2543,6 +2543,7 @@ class TreatmentSelectionStage(Stage):
         # ── RULE 4: Hard Psychiatric Consultation (SSRI+SNRI+bup/mirt) ─────────
         if ssri_tried and snri_tried and (ndri_tried or nassa_tried):
             out.audit_trail.append("route:rule4_hard_consult")
+            _r4_intent: RecommendationIntent = "switch_to" if current_med_failed else "start"
             # Hard consultation block FIRST
             out.warnings.append(
                 "Psychiatric Consultation Required — This patient has failed adequate "
@@ -2568,7 +2569,7 @@ class TreatmentSelectionStage(Stage):
             for tca_key in ["nortriptyline", "desipramine"]:
                 if can_recommend(tca_key):
                     out.recommendations.append(_make_reco_with_notes(
-                        tca_key, intent="start",
+                        tca_key, intent=_r4_intent,
                         extra_messages=[
                             "Pending psychiatric consultation — do not initiate "
                             "without psychiatric input [108, 109]",
@@ -2588,6 +2589,7 @@ class TreatmentSelectionStage(Stage):
         # ── RULE 3: TRD Step 2 (SSRI+SNRI tried, bup/mirt not tried) ──────────
         if ssri_tried and snri_tried and not ndri_tried and not nassa_tried:
             out.audit_trail.append("route:rule3_trd_step2")
+            _r3_intent: RecommendationIntent = "switch_to" if current_med_failed else "start"
             # Soft TRD safety flag
             out.warnings.append(
                 "Treatment-Resistant Depression — patient has failed adequate trials "
@@ -2601,7 +2603,7 @@ class TreatmentSelectionStage(Stage):
                     "or prominent anergia [106, 28]",
                 ]
                 out.recommendations.append(_make_reco_with_notes(
-                    "bupropion_xl", intent="start",
+                    "bupropion_xl", intent=_r3_intent,
                     extra_messages=bup_msgs,
                     extra_rationale=[f"{trial_label}: bupropion — NDRI class [106, 28]."],
                     evidence=[
@@ -2615,7 +2617,7 @@ class TreatmentSelectionStage(Stage):
                     "or anxiety [107, 28]",
                 ]
                 out.recommendations.append(_make_reco_with_notes(
-                    "mirtazapine", intent="start",
+                    "mirtazapine", intent=_r3_intent,
                     extra_messages=mirt_msgs,
                     extra_rationale=[f"{trial_label}: mirtazapine — NaSSA class [107, 28]."],
                     evidence=[
