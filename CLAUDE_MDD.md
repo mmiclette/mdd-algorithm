@@ -332,25 +332,55 @@ adequate trial). Tapering guidance also applies to maintenance discontinuation (
 
 #### SWITCHING PROTOCOLS BY CLASS
 
-**SSRI to SSRI or SNRI:**
-- Direct switch safe for most SSRIs [28, 87]
-- Paroxetine or fluvoxamine: cross-taper 1–2 weeks required [28, 87]
-- Method: reduce paroxetine 10 mg every 3–7 days while starting new agent at low dose
-  and titrating up simultaneously [28, 87]
+**Rule A — SSRI → SSRI (direct switch):**
+- Stop prior SSRI, start new SSRI at standard starting dose the next day [28, 87]
+- If patient has history of withdrawal sensitivity, consider abbreviated overlap over
+  3–7 days instead [28, 87]
+- Exception: paroxetine or fluvoxamine as prior — use cross-taper (see Rule E)
 
-**Fluoxetine to any antidepressant:**
+**Rule B — SSRI → SNRI (direct switch):**
+- Stop prior SSRI, start new SNRI at standard starting dose the next day [28, 87, 114]
+- If patient has history of withdrawal sensitivity, consider abbreviated overlap over
+  3–7 days instead [28, 87, 114]
+- Exception: paroxetine or fluvoxamine as prior — use cross-taper (see Rule E)
+
+**Rule F-REVERSE — SNRI → SSRI (direct switch with NE withdrawal warning):**
+- Stop prior SNRI, start new SSRI at standard starting dose the next day [28, 87, 93]
+- Norepinephrine withdrawal symptoms (dizziness, headache, fatigue, irritability) may
+  occur regardless of SSRI serotonergic coverage because SSRIs do not replace
+  norepinephrine reuptake inhibition [93]
+- If patient has history of withdrawal sensitivity, abbreviated overlap over 3–7 days
+  may reduce NE withdrawal symptoms [28, 87]
+
+**Fluoxetine → any antidepressant (Rule C):**
 - Direct switch safe — norfluoxetine metabolite half-life 7–15 days provides built-in
   taper [28, 87]
 - Exception: switching to MAOI requires 5-week washout [28, 87]
 
-**SSRI or SNRI to bupropion or mirtazapine:**
+**Paroxetine → any antidepressant (Rule D):**
+- Mandatory slow taper due to high discontinuation risk and CYP2D6 inhibition [28, 87, 92]
+- Dose-calculated step-down taper; start new medication at Week 2 [28, 87]
+
+**SSRI or SNRI → bupropion or mirtazapine (Rule E):**
 - Cross-taper 1–2 weeks preferred [28, 87]
 - Lower serotonin syndrome risk due to different mechanisms [28, 87]
 
-**Venlafaxine or duloxetine to any antidepressant:**
-- Slow taper 2–4 weeks minimum [28, 87, 92, 93, 94]
-- Cross-taper with overlap recommended to maintain coverage [28, 87]
+**Venlafaxine → any antidepressant (Rule F):**
+- Slow taper 2–4 weeks minimum; dose-calculated step-down [28, 87, 92, 93, 94]
 - Highest discontinuation syndrome risk among all antidepressants [93]
+- Start new medication at Week 2 of taper [28, 87]
+
+**Duloxetine → any antidepressant (Rule G):**
+- Slow taper 2–4 weeks minimum; dose-calculated step-down [28, 87, 92, 93]
+- Start new medication at Week 2 of taper [28, 87]
+
+**Bupropion → any antidepressant (Rule H):**
+- Standard step-down taper over 1–2 weeks [28, 87]
+- Start new medication at Week 2 [28, 87]
+
+**Mirtazapine → any antidepressant (Rule I):**
+- Standard step-down taper over 1–2 weeks [28, 87]
+- Start new medication at Week 2 [28, 87]
 
 **To or from MAOI:**
 - SSRI, SNRI, or TCA to MAOI: 2-week washout minimum [28, 87, 89, 90]
@@ -884,3 +914,6 @@ for the user to resolve. Do not infer or fabricate citation assignments.
 109. Gaddey HL, Mason B, Naik A. Depression: Managing Resistance and Partial Response to Treatment. Am Fam Physician. 2024;109(5):410-416.
 110. Anand A et al. Ketamine versus ECT for Nonpsychotic Treatment-Resistant Major Depression. N Engl J Med. 2023;388(25):2315-2325.
 111. Marques MG et al. Next-Step Treatment Options for Treatment-Resistant Depression: Mayo Clinic Depression Center Panel. J Clin Psychiatry. 2026;87(1):25cs16066.
+112. Horowitz MA, Taylor D. Tapering of SSRI Treatment to Mitigate Withdrawal Symptoms. Lancet Psychiatry. 2019;6(6):538-546.
+113. Van Leeuwen E et al. Tapering Antidepressants Combined with Psychological Support vs Continuation: A Network Meta-Analysis. JAMA Psychiatry. 2024;81(9):869-878.
+114. Perahia DG et al. Switching to Duloxetine from Selective Serotonin Reuptake Inhibitor Antidepressants: A Multicenter Trial Comparing 2 Switching Techniques. J Clin Psychiatry. 2008;69(1):95-105.

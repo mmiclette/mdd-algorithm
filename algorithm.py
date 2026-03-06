@@ -1675,6 +1675,29 @@ def get_switching_protocol(
             ),
         )
 
+    # ── RULE F-REVERSE: SNRI → SSRI (direct switch with NE withdrawal warning) ─
+    if (pc in ("venlafaxine", "duloxetine", "snri_other")) and _cls_is_ssri(nc):
+        return SwitchProtocol(
+            method="direct_switch",
+            duration="N/A — direct switch",
+            warning=(
+                "Norepinephrine withdrawal symptoms may occur regardless of SSRI "
+                "coverage — monitor for dizziness, paresthesia, and irritability "
+                "in the first 1-2 weeks. [93, 113]"
+            ),
+            citations=["87", "28", "93"],
+            new_med_timing=(
+                f"Stop prior SNRI, start {MED_KB.get(new_key or '', {}).get('display', 'new SSRI')} "
+                f"at standard starting dose ({new_start}) the next day."
+            ),
+            clinical_note=(
+                "If patient has history of withdrawal sensitivity, abbreviated overlap "
+                "over 3-7 days may reduce serotonin-related discontinuation symptoms. "
+                "Note: norepinephrine withdrawal symptoms (dizziness, electric shock "
+                "sensations) may still occur despite SSRI coverage. [87, 28, 93]"
+            ),
+        )
+
     # ── RULE F: Venlafaxine → any class (full calculated slow taper) ─────
     if pc == "venlafaxine":
         step_size = 37.5
@@ -1793,54 +1816,40 @@ def get_switching_protocol(
     # ── RULE A: SSRI (not paroxetine, not fluoxetine) → SSRI ────────────
     if pc == "ssri_other" and _cls_is_ssri(nc):
         return SwitchProtocol(
-            method="abbreviated_overlap",
-            duration="3-7 days",
+            method="direct_switch",
+            duration="N/A — direct switch",
             warning="",
             citations=["87", "28"],
-            taper_steps=[
-                TaperStep("Day 1-3", dose * 0.5 if dose else 0,
-                          f"Reduce {prior_disp} to 50% of current dose ({dose * 0.5:.0f}mg) "
-                          f"while starting new medication at lowest available dose")
-                          if dose else
-                TaperStep("Day 1-3", 0,
-                          f"Reduce {prior_disp} to 50% while starting new medication"),
-                TaperStep("Day 4-7", 0,
-                          f"Stop {prior_disp}, continue titrating new medication to target dose"),
-            ],
             new_med_timing=(
-                f"Start new medication at lowest available dose ({new_start}) on day 1."
+                f"Stop {prior_disp}, start "
+                f"{MED_KB.get(new_key or '', {}).get('display', 'new SSRI')} "
+                f"at standard starting dose ({new_start}) the next day."
             ),
             clinical_note=(
-                "Evidence for specific switching strategies is limited. "
-                "Direct switch is commonly used in clinical practice. [87]"
+                "If patient has history of withdrawal sensitivity, abbreviated overlap "
+                "over 3-7 days may reduce discontinuation symptoms — reduce prior SSRI "
+                "to half dose while starting new SSRI at low dose, then stop prior SSRI. "
+                "[87, 28]"
             ),
         )
 
     # ── RULE B: SSRI (not paroxetine, not fluoxetine) → SNRI ────────────
     if pc == "ssri_other" and _cls_is_snri(nc):
         return SwitchProtocol(
-            method="abbreviated_overlap",
-            duration="3-7 days",
+            method="direct_switch",
+            duration="N/A — direct switch",
             warning="",
-            citations=["87", "28"],
-            taper_steps=[
-                TaperStep("Day 1-3", dose * 0.5 if dose else 0,
-                          f"Reduce {prior_disp} to 50% of current dose ({dose * 0.5:.0f}mg) "
-                          f"while starting new SNRI at lowest available dose")
-                          if dose else
-                TaperStep("Day 1-3", 0,
-                          f"Reduce {prior_disp} to 50% while starting new SNRI"),
-                TaperStep("Day 4-7", 0,
-                          f"Stop {prior_disp}, continue titrating new SNRI to target dose"),
-            ],
+            citations=["87", "28", "114"],
             new_med_timing=(
-                f"Start new medication at lowest available dose ({new_start}) on day 1. "
-                "SNRI provides full serotonin transporter coverage plus norepinephrine — "
-                "discontinuation risk from prior SSRI largely covered. [87, 28]"
+                f"Stop {prior_disp}, start "
+                f"{MED_KB.get(new_key or '', {}).get('display', 'new SNRI')} "
+                f"at standard starting dose ({new_start}) the next day."
             ),
             clinical_note=(
-                "Evidence for specific switching strategies is limited. "
-                "Direct switch is commonly used in clinical practice. [87]"
+                "If patient has history of withdrawal sensitivity, abbreviated overlap "
+                "over 3-7 days may reduce discontinuation symptoms — reduce prior SSRI "
+                "to half dose while starting SNRI at low dose, then stop prior SSRI. "
+                "[87, 28, 114]"
             ),
         )
 
@@ -2946,7 +2955,7 @@ def _build_medication_entries(p: "PatientInput", out: "AlgorithmOutput") -> List
                 p.current_antidepressant_key, rec.medication_key, p.current_dose_mg
             )
             if _sw_proto.taper_steps and _sw_proto.method != "direct_switch":
-                entry["dose"] = "See Taper Schedule for Dosing"
+                entry["dose"] = f"Dosing: Refer to Switching Protocol \u2192 Target: {rec.dose_range}"
             else:
                 entry["dose"] = f"Start: {rec.start_dose} \u2192 Target: {rec.dose_range}"
         else:  # continue / increase

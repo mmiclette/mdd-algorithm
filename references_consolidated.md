@@ -180,3 +180,4 @@
 
 112. Quilichini JB et al. Comparative Effects of 15 Antidepressants on Risk of Withdrawal Syndrome: WHO Pharmacovigilance Database. J Affect Disord. 2022;297:189-193.
 113. Henssler J et al. Incidence of Antidepressant Discontinuation Symptoms: Systematic Review and Meta-Analysis. Lancet Psychiatry. 2024;11(7):526-535.
+114. Perahia DG et al. Switching to Duloxetine From SSRIs: Multicenter Trial Comparing 2 Switching Techniques. J Clin Psychiatry. 2008;69(1):95-105.
