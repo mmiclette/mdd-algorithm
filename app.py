@@ -756,6 +756,7 @@ with col_right:
                     f'<div style="color:#757575;font-size:0.9em;">'
                     f'→ {_e(n)}</div>'
                     for n in med.get("notes", [])
+                    if n and n.strip()
                 )
                 dose_html = (
                     f'<div style="color:#757575;font-size:0.9em;'

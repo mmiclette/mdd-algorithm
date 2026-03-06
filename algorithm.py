@@ -2941,12 +2941,19 @@ def _build_medication_entries(p: "PatientInput", out: "AlgorithmOutput") -> List
         if rec.intent == "start":
             entry["dose"] = f"Start: {rec.start_dose} \u2192 Target: {rec.dose_range}"
         elif rec.intent == "switch_to":
-            entry["dose"] = f"Target: {rec.dose_range}"
+            # Check if taper schedule exists for this switch
+            _sw_proto = get_switching_protocol(
+                p.current_antidepressant_key, rec.medication_key, p.current_dose_mg
+            )
+            if _sw_proto.taper_steps and _sw_proto.method != "direct_switch":
+                entry["dose"] = "See Taper Schedule for Dosing"
+            else:
+                entry["dose"] = f"Start: {rec.start_dose} \u2192 Target: {rec.dose_range}"
         else:  # continue / increase
             dose_curr = f"{p.current_dose_mg} mg" if p.current_dose_mg else "current"
             entry["dose"] = f"Current: {dose_curr} \u2192 Target: {rec.dose_range}"
         if rec.messages:
-            entry["notes"] = [_strip_cites(m) for m in rec.messages]
+            entry["notes"] = [_strip_cites(m) for m in rec.messages if m and m.strip()]
         entries.append(entry)
     return entries
 
